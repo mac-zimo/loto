@@ -29,7 +29,7 @@ Le squelette est **assez complet** : 5 modules Python (config, database, loader,
 
 ### Analyses manquantes
 
-- [ ] **Analyse des gains réels par rang** — exploiter les colonnes `gagnants_rang*` / `rapport_rang*` (déjà stockées en BD mais jamais utilisées). Calculer le ROI réel moyen par rang, la fréquence réelle de chaque prix, et comparer avec les odds théoriques. <150 lignes dans un nouveau fichier `src/loto/prize_analysis.py`.
+- [x] **Analyse des gains réels par rang** — créé `src/loto/prize_analysis.py` (149 l.). Fonctions : `roi_by_rank()` (ROI moyen par rang), `frequency_by_rank()` (fréquence réelle d'attribution), `compare_odds_theory_vs_reel()` (comparaison théorie vs réel). `summarize_all()` orchestre tout. Gère BD vide gracefully.
 - [ ] **Analyse de périodicité (Fourier/ACF)** — détecter si des cycles existent dans les séries temporelles de fréquence des numéros (autocorrélation, transformée de Fourier simplifiée). <100 lignes.
 - [ ] **Stratégie "numéro de chance"** — ajouter au moins une stratégie qui exploite spécifiquement le numéro de chance (fréquences, corrélation avec les boules, combinaison optimale). <80 lignes dans `strategy.py`.
 
@@ -52,7 +52,7 @@ Le squelette est **assez complet** : 5 modules Python (config, database, loader,
 |-----------|------|---------|
 | Infrastructure & config | ✅ 7/7 modules existants | `run_pipeline.py`, `__main__.py`, README |
 | Données (CSV→BD) | ✅ Chargement fonctionnel | Validation qualité, vérification cohérence |
-| Analyses statistiques | ✅ Fréquences, corrélations, temporel | Gains réels par rang, Fourier/ACF |
+| Analyses statistiques | ✅ Fréquences, corrélations, temporel, gains réels par rang | Fourier/ACF |
 | Modèles prédictifs | ✅ Markov, KMeans, anomalies | — |
 | Stratégies & backtest | ✅ 4 stratégies + backtest | IC bootstrap, stratégie combinée, numéro chance |
 | Rapports & visuels | ✅ Heatmaps, charts, texte, JSON | Notebook exploratoire |
