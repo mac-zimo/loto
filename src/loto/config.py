@@ -1,0 +1,42 @@
+"""
+Configuration centralisée du projet Loto Analyze.
+"""
+
+import os
+from pathlib import Path
+
+# Root directories
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
+SRC_DIR = Path(__file__).parent
+DATA_DIR = PROJECT_ROOT / "data"
+OUTPUT_DIR = PROJECT_ROOT / "output"
+
+# CSV source files (relative to project root)
+CSV_FILES = [
+    "nouveau_loto.csv",
+    "loto2017.csv",
+    "loto_201902.csv",
+    "loto_201911.csv",
+]
+
+# Database path
+DB_PATH = DATA_DIR / "loto_analyze.db"
+
+# Loto game rules
+NUM_BALLS = 5          # Number of main numbers drawn
+MAX_BALL = 49          # Max number on a ball
+NUM_CHANCE_MAX = 10    # Max chance number
+
+# Statistics windows for analysis
+FREQUENCY_WINDOWS = [30, 90, 182, 365]  # in draws
+
+# Correlation thresholds
+CORR_STRONG_THRESHOLD = 0.15  # absolute correlation considered "strong"
+
+# Strategy simulation params
+SIMULATION_ROUNDS = 100_000
+SIMULATION_SEED = 42
+
+# Ensure directories exist
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
