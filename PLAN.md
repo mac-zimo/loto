@@ -22,7 +22,7 @@ Le squelette est **assez complet** : 5 modules Python (config, database, loader,
 
 ### Qualité & fiabilité
 
-- [ ] **Valider le chargement CSV** — ajouter un check dans `loader.py` ou un script autonome qui vérifie la cohérence des données après import (lignes nulles, boules hors 1-49, doublons, dates non triées). Générer un résumé de qualité. <100 lignes.
+- [x] **Valider le chargement CSV** — ajouter un check dans `loader.py` ou un script autonome qui vérifie la cohérence des données après import (lignes nulles, boules hors 1-49, doublons, dates non triées). Générer un résumé de qualité. <100 lignes.
 - [ ] **Fixer le bug dans `report.py:343`** — `from src.loto.config import NUM_BALLS, MAX_BALL, df = None` mélange import et affectation, ça plantera si le module est rechargé. Corriger en deux instructions séparées et retirer la redéfinition de `plot_distribution_stats`. <50 lignes.
 - [ ] **Configurer matplotlib backend** — ajouter `matplotlib.use('Agg')` au début du pipeline pour éviter les erreurs X11/WSLdisplay sur les environnements headless. <10 lignes (dans `run_pipeline.py`).
 - [ ] **Fixer `hot_cold_numbers()` dans `analysis.py:310-311`** — le slice `[:20]` après `sort()` ne modifie pas la liste en place (le retour de `sort()` est None). Les hot/cold globaux sont donc toujours vides. <20 lignes.
