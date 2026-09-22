@@ -18,7 +18,7 @@ Le squelette est **assez complet** : 5 modules Python (config, database, loader,
 - [x] **models.py** — Markov chains, KMeans clustering, détection anomalies, test Chi-deux des paires
 - [x] **strategy.py** — 4 stratégies (hot, cold, paired, weighted random) + backtest + odds théoriques partiels
 - [x] **report.py** — visualisations matplotlib/seaborn + rapport textuel + export JSON
-- [ ] **Créer un script `run_pipeline.py` principal** — point d'entrée CLI qui enchaîne : loader → analysis → models → strategy → report. Accepte des flags (`--reset`, `--skip-plots`, `--output-dir`). Un seul fichier, <100 lignes.
+- [x] **Créer un script `run_pipeline.py` principal** — point d'entrée CLI qui enchaîne : loader → analysis → models → strategy → report. Accepte des flags (`--reset`, `--skip-plots`, `--output-dir`). Un seul fichier, <100 lignes.
 
 ### Qualité & fiabilité
 
