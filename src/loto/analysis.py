@@ -306,11 +306,13 @@ def hot_cold_numbers(freq_data: dict, window: int | None = None) -> tuple[list, 
     hot = [(num, count) for num, count in overall.most_common() if count > expected_freq * 1.1]
     cold = [(num, count) for num, count in overall.most_common() if count < expected_freq * 0.9]
 
-    # Trier et limiter
-    hot.sort(key=lambda x: x[1], reverse=True)[:20]
-    cold.sort(key=lambda x: x[1])[:20]
+    # Trier et limiter aux 10 principaux
+    hot.sort(key=lambda x: x[1], reverse=True)
+    cold.sort(key=lambda x: x[1])
+    hot = hot[:10]
+    cold = cold[:10]
 
-    return [h for h, _ in overall.most_common(10)], [c for c, _ in overall.most_common()[-10:]]
+    return hot, cold
 
 
 def run_full_analysis(db_path: str | None = None) -> dict[str, Any]:

@@ -24,8 +24,8 @@ Le squelette est **assez complet** : 5 modules Python (config, database, loader,
 
 - [x] **Valider le chargement CSV** — ajouter un check dans `loader.py` ou un script autonome qui vérifie la cohérence des données après import (lignes nulles, boules hors 1-49, doublons, dates non triées). Générer un résumé de qualité. <100 lignes.
 - [x] **Fixer le bug dans `report.py:343`** — `from src.loto.config import NUM_BALLS, MAX_BALL, df = None` mélange import et affectation. Supprimé la première définition orpheline de `plot_distribution_stats` (lignes 59-108), corrigé l'import en deux instructions séparées avec `Counter` et `math_comb` remontés en haut du fichier. <50 lignes.
-- [ ] **Configurer matplotlib backend** — ajouter `matplotlib.use('Agg')` au début du pipeline pour éviter les erreurs X11/WSLdisplay sur les environnements headless. <10 lignes (dans `run_pipeline.py`).
-- [ ] **Fixer `hot_cold_numbers()` dans `analysis.py:310-311`** — le slice `[:20]` après `sort()` ne modifie pas la liste en place (le retour de `sort()` est None). Les hot/cold globaux sont donc toujours vides. <20 lignes.
+- [x] **Configurer matplotlib backend** — `matplotlib.use("Agg")` déjà présent dans `run_pipeline.py` (lignes 21-22). Aucune modification nécessaire. <10 lignes.
+- [x] **Fixer `hot_cold_numbers()` dans `analysis.py:310-311`** — le slice `[:20]` après `sort()` retournait None. Corrigé : tri en place puis truncage explicite avec `hot = hot[:10]`. La fonction retournait aussi `overall.most_common()` au lieu des listes `hot`/`cold`. Correction appliquée. <20 lignes.
 
 ### Analyses manquantes
 
