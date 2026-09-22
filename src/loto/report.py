@@ -15,7 +15,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from src.loto.config import OUTPUT_DIR
+from collections import Counter
+from math import comb as math_comb
+
+from src.loto.config import NUM_BALLS, MAX_BALL, OUTPUT_DIR
 
 
 def ensure_output_dir():
@@ -55,57 +58,6 @@ def plot_frequency_heatmap(freq_data: dict, output_path: Path | None = None):
     plt.close(fig)
     print(f"  Heatmap sauvegardé: {path}")
 
-
-def plot_distribution_stats(dist_data: dict, output_path: Path | None = None):
-    """
-    Visualise les distributions de somme et ratio pairs/impairs.
-    """
-    ensure_output_dir()
-    path = output_path or OUTPUT_DIR / "distribution_stats.png"
-
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    # Distribution des sommes
-    sum_stats = dist_data["sum"]
-    axes[0].axvline(sum_stats["mean"], color="red", linestyle="--", label=f"Moyenne: {sum_stats['mean']:.0f}")
-    axes[0].fill_between(
-        [sum_stats["mean"] - sum_stats["std"], sum_stats["mean"] + sum_stats["std"]],
-        0, 1, alpha=0.3, color="orange", label=f"±1σ ({sum_stats['std']:.0f})"
-    )
-
-    # Simuler une distribution normale pour comparaison
-    x = np.linspace(sum_stats["min"], sum_stats["max"], 200)
-    y = (1 / (sum_stats["std"] * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - sum_stats["mean"]) / sum_stats["std"]) ** 2)
-    axes[0].plot(x, y / y.max() * len(df) * 0.1, "k--", alpha=0.3, label="Normale théorique")
-
-    axes[0].set_title("Distribution de la Somme des Boules")
-    axes[0].set_xlabel("Somme")
-    axes[0].set_ylabel("Fréquence (rel.)")
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
-
-    # Ratio pairs/impairs
-    eo_stats = dist_data["even_odd"]
-    even_values = []
-    # On simule des tirages aléatoires pour le ratio pairs/impairs
-    np.random.seed(42)
-    for _ in range(10000):
-        drawn = np.random.choice(range(1, MAX_BALL + 1), size=NUM_BALLS, replace=False)
-        even_ratio = sum(1 for b in drawn if b % 2 == 0) / NUM_BALLS
-        even_values.append(even_ratio)
-
-    axes[1].hist(even_values, bins=20, color="steelblue", alpha=0.7, edgecolor="black")
-    axes[1].axvline(eo_stats["mean_ratio"], color="red", linestyle="--", label=f"Moyenne: {eo_stats['mean_ratio']:.2f}")
-    axes[1].set_title("Distribution du Ratio Pairs/Impairs")
-    axes[1].set_xlabel("Ratio pairs")
-    axes[1].set_ylabel("Count")
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    fig.savefig(str(path), dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Distribution stats sauvegardé: {path}")
 
 
 def plot_correlation_matrix(corr_matrix: pd.DataFrame, output_path: Path | None = None):
@@ -316,7 +268,6 @@ def generate_text_report(analysis: dict, modeling: dict, strategies: list[dict],
                 lines.append(f"    Gains sur: {', '.join(s['win_dates'][:5])}")
 
     # Section 8: Odds théoriques
-    from math import comb as math_comb
     total_combos = math_comb(49, 5)
     lines.append(f"\n📐 PROBABILITÉS THÉORIQUES")
     lines.append("-" * 40)
@@ -339,8 +290,7 @@ def generate_text_report(analysis: dict, modeling: dict, strategies: list[dict],
     return report_text
 
 
-# Import constants needed for functions that use them
-from src.loto.config import NUM_BALLS, MAX_BALL, df = None  # will be set when module loads
+# NUM_BALLS, MAX_BALL déjà importés plus haut avec OUTPUT_DIR
 
 
 def plot_distribution_stats(df: pd.DataFrame, dist_data: dict, output_path: Path | None = None):
