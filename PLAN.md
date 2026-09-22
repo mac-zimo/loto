@@ -30,7 +30,7 @@ Le squelette est **assez complet** : 5 modules Python (config, database, loader,
 ### Analyses manquantes
 
 - [x] **Analyse des gains réels par rang** — créé `src/loto/prize_analysis.py` (149 l.). Fonctions : `roi_by_rank()` (ROI moyen par rang), `frequency_by_rank()` (fréquence réelle d'attribution), `compare_odds_theory_vs_reel()` (comparaison théorie vs réel). `summarize_all()` orchestre tout. Gère BD vide gracefully.
-- [ ] **Analyse de périodicité (Fourier/ACF)** — détecter si des cycles existent dans les séries temporelles de fréquence des numéros (autocorrélation, transformée de Fourier simplifiée). <100 lignes.
+- [x] **Analyse de périodicité (Fourier/ACF)** — créé `src/loto/periodicity.py` (~95 l.). Fonctions: `_binary_series()` (série binaire 0/1), `_acf()` (autocorrélation normalisée avec seuil IC 95%), `_fft_periods()` (FFT + détection de pics > moyenne+2σ), `analyze_periodicity()` (orchestre et identifie les numéros cycliques). Interprétation: cycles significatifs ou bruit blanc.
 - [ ] **Stratégie "numéro de chance"** — ajouter au moins une stratégie qui exploite spécifiquement le numéro de chance (fréquences, corrélation avec les boules, combinaison optimale). <80 lignes dans `strategy.py`.
 
 ### Améliorations backtest
@@ -52,7 +52,7 @@ Le squelette est **assez complet** : 5 modules Python (config, database, loader,
 |-----------|------|---------|
 | Infrastructure & config | ✅ 7/7 modules existants | `run_pipeline.py`, `__main__.py`, README |
 | Données (CSV→BD) | ✅ Chargement fonctionnel | Validation qualité, vérification cohérence |
-| Analyses statistiques | ✅ Fréquences, corrélations, temporel, gains réels par rang | Fourier/ACF |
+| Analyses statistiques | ✅ Fréquences, corrélations, temporel, gains réels par rang, périodicité (Fourier/ACF) | — |
 | Modèles prédictifs | ✅ Markov, KMeans, anomalies | — |
 | Stratégies & backtest | ✅ 4 stratégies + backtest | IC bootstrap, stratégie combinée, numéro chance |
 | Rapports & visuels | ✅ Heatmaps, charts, texte, JSON | Notebook exploratoire |
