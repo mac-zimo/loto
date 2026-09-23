@@ -119,21 +119,11 @@ def compare_odds_theory_vs_reel(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def summarize_all(db_path: str | None = None) -> dict:
-    """Exécute toutes les analyses et retourne un résumé structuré."""
-    if db_path is None:
-        from src.loto.config import DB_PATH
-        db_path = str(DB_PATH)
-
-    conn = sqlite3.connect(db_path)
-    df = get_prize_data(conn)
-    conn.close()
-
-    return {
-        "roi_by_rank": roi_by_rank(df),
-        "frequency_by_rank": frequency_by_rank(df),
-        "odds_comparison": compare_odds_theory_vs_reel(df),
-        "total_draws": len(df),
-    }
+    """Désactivé: l'ancien calcul de ROI/rangs n'est pas méthodologiquement valide."""
+    raise RuntimeError(
+        "prize_analysis legacy désactivé: reconstruire les règles FDJ versionnées "
+        "et utiliser les rapports réels avant toute analyse de ROI."
+    )
 
 
 if __name__ == "__main__":

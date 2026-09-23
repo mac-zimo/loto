@@ -6,6 +6,7 @@ Gère les différents formats (ancien/nouveau loto).
 import csv
 import logging
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from src.loto.config import CSV_FILES, PROJECT_ROOT, DATA_DIR
 from src.loto.database import get_connection, init_db, clear_db
@@ -27,6 +28,19 @@ def parse_float_safe(val: str, default=0.0) -> float:
         return float(val.replace(',', '.'))
     except (ValueError, TypeError):
         return default
+
+
+def normalize_date(val: str) -> str:
+    """Normalise une date FDJ en ISO (YYYY-MM-DD) pour un tri fiable."""
+    value = (val or "").strip()
+    if not value:
+        return ""
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, fmt).date().isoformat()
+        except ValueError:
+            continue
+    raise ValueError(f"Format de date non reconnu: {value!r}")
 
 
 def load_csv_file(filepath: Path, conn: sqlite3.Connection) -> tuple[int, int]:
@@ -81,16 +95,13 @@ def load_csv_file(filepath: Path, conn: sqlite3.Connection) -> tuple[int, int]:
                         ?, ?,
                         ?, ?,
                         ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?
+                        ?, ?, ?, ?, ?
                     )
                 """, (
                     annee_numero,
                     row.get("jour_de_tirage", "").strip(),
-                    row.get("date_de_tirage", ""),
-                    row.get("date_de_forclusion", ""),
+                    normalize_date(row.get("date_de_tirage", "")),
+                    normalize_date(row.get("date_de_forclusion", "")),
                     parse_int_safe(row.get("boule_1", "0")),
                     parse_int_safe(row.get("boule_2", "0")),
                     parse_int_safe(row.get("boule_3", "0")),

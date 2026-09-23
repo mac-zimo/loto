@@ -30,6 +30,16 @@ def parse_args():
     p.add_argument("--reset", action="store_true", help="Vider la BD avant chargement")
     p.add_argument("--skip-plots", action="store_true", help="Omettre les visualisations")
     p.add_argument("--output-dir", type=str, default=None, help="Répertoire de sortie (default: output/)")
+    p.add_argument(
+        "--include-legacy-models",
+        action="store_true",
+        help="Exécuter les anciens modèles exploratoires (Markov/KMeans, non prédictifs)",
+    )
+    p.add_argument(
+        "--include-legacy-backtests",
+        action="store_true",
+        help="Exécuter les anciens backtests non fiables (gains estimés, exploration uniquement)",
+    )
     return p.parse_args()
 
 
@@ -53,10 +63,10 @@ def main():
     logger.info("[1/5] Chargement des CSV dans la base de données ...")
     from src.loto.loader import load_all_db
     total_loaded, total_inserted = load_all_db(reset=args.reset)
-    if total_inserted == 0:
-        logger.warning("Aucun tirage inséré. Vérifiez les fichiers CSV.")
+    if total_loaded == 0:
+        logger.error("Aucun tirage source lu. Vérifiez les fichiers CSV.")
         sys.exit(1)
-    logger.info(f"  {total_inserted} tirages chargés.")
+    logger.info(f"  {total_inserted} nouveaux tirages insérés sur {total_loaded} lignes lues.")
 
     # --- Étape 2 : Analyse ---
     logger.info("[2/5] Analyse statistique ...")
@@ -64,18 +74,27 @@ def main():
     analysis = run_full_analysis()
     df = get_dataframe()
 
-    # --- Étape 3 : Modélisation ---
-    logger.info("[3/5] Modélisation prédictive ...")
-    from src.loto.models import run_modeling
-    modeling = run_modeling(df)
+    # --- Étape 3 : Modélisation exploratoire ---
+    modeling = {}
+    if args.include_legacy_models:
+        logger.warning("[3/5] Modèles legacy activés: résultats exploratoires, sans valeur prédictive démontrée.")
+        from src.loto.models import run_modeling
+        modeling = run_modeling(df)
+    else:
+        logger.info("[3/5] Modèles legacy ignorés (validation hors échantillon absente).")
 
     # --- Étape 4 : Stratégies & Backtest ---
-    logger.info("[4/5] Évaluation des stratégies ...")
-    from src.loto.strategy import run_strategy_backtest, run_chance_evaluation
-    strategies = run_strategy_backtest(df)
-
-    logger.info("[4b/5] Évaluation stratégie numéro de chance ...")
-    chance_results = run_chance_evaluation(df)
+    strategies = []
+    chance_results = []
+    if args.include_legacy_backtests:
+        logger.warning(
+            "[4/5] Backtests legacy activés: gains estimés et ROI non exploitables."
+        )
+        from src.loto.strategy import run_strategy_backtest, run_chance_evaluation
+        strategies = run_strategy_backtest(df)
+        chance_results = run_chance_evaluation(df)
+    else:
+        logger.info("[4/5] Backtests legacy ignorés (méthodologie non fiable, refonte planifiée).")
 
     # --- Étape 5 : Rapport ---
     if args.skip_plots:

@@ -253,7 +253,7 @@ def temporal_patterns(df: pd.DataFrame) -> dict[str, Any]:
 
     # Analyse des délais pour chaque numéro
     draw_indices = defaultdict(list)
-    for idx, (_, row) in df.iterrows():
+    for idx, row in df.iterrows():
         for i in range(1, NUM_BALLS + 1):
             val = row[f"boule_{i}"]
             if pd.notna(val):
@@ -301,7 +301,7 @@ def hot_cold_numbers(freq_data: dict, window: int | None = None) -> tuple[list, 
 
     # Analyse globale
     overall = freq_data["overall"]
-    expected_freq = len(overall) / MAX_BALL  # fréquence attendue si uniforme
+    expected_freq = sum(overall.values()) / MAX_BALL  # fréquence attendue si uniforme
 
     hot = [(num, count) for num, count in overall.most_common() if count > expected_freq * 1.1]
     cold = [(num, count) for num, count in overall.most_common() if count < expected_freq * 0.9]

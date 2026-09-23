@@ -40,6 +40,7 @@ def plot_frequency_heatmap(freq_data: dict, output_path: Path | None = None):
     colors = sns.color_palette("viridis", as_cmap=True)
 
     for ax_idx, ball_pos in enumerate(["boule_1", "boule_2", "boule_3", "boule_4", "boule_5"]):
+        ax = axes[ax_idx]
         counter = freq_data["by_ball"][ball_pos]
         freqs = np.zeros(MAX_BALL)
 
@@ -47,11 +48,11 @@ def plot_frequency_heatmap(freq_data: dict, output_path: Path | None = None):
             if num in counter:
                 freqs[num - 1] = counter[num]
 
-        im = ax_idx.plot(freqs, "o-", color="steelblue", linewidth=1.5, markersize=4)
-        ax_idx.set_title(ball_pos.replace("boule_", "Boule "), fontsize=12)
-        ax_idx.set_xlim(-0.5, MAX_BALL - 0.5)
-        ax_idx.set_xticks(range(1, MAX_BALL + 1))
-        ax_idx.set_ylabel("Fréq.")
+        ax.plot(range(1, MAX_BALL + 1), freqs, "o-", color="steelblue", linewidth=1.5, markersize=4)
+        ax.set_title(ball_pos.replace("boule_", "Boule "), fontsize=12)
+        ax.set_xlim(0.5, MAX_BALL + 0.5)
+        ax.set_xticks(range(1, MAX_BALL + 1, 8))
+        ax.set_ylabel("Fréq.")
 
     plt.tight_layout()
     fig.savefig(str(path), dpi=150, bbox_inches="tight")
