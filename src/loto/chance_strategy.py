@@ -14,7 +14,7 @@ La stratégie combine:
 import numpy as np
 import pandas as pd
 from collections import Counter
-from src.loto.config import NUM_BALLS, MAX_BALL, NUM_CHANCE_MAX
+from loto.config import NUM_BALLS, MAX_BALL, NUM_CHANCE_MAX
 
 
 class ChanceNumberStrategy:
@@ -223,7 +223,7 @@ def evaluate_chance_strategy(df, method="frequency"):
 
 
 if __name__ == "__main__":
-    from src.loto.analysis import get_dataframe
+    from loto.analysis import get_dataframe
     df = get_dataframe()
 
     for method in ["frequency", "day_conditional", "recent"]:

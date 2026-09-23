@@ -4,20 +4,22 @@ Schema unique pour les tirages du Loto français.
 """
 
 import sqlite3
+from os import PathLike
 from pathlib import Path
-from src.loto.config import DB_PATH
+from loto.config import DB_PATH
 
 
-def get_connection(db_path: str | None = None) -> sqlite3.Connection:
+def get_connection(db_path: str | PathLike[str] | None = None) -> sqlite3.Connection:
     """Retourne une connexion SQLite."""
-    path = db_path or str(DB_PATH)
+    path = Path(db_path or DB_PATH).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
-def init_db(db_path: str | None = None) -> sqlite3.Connection:
+def init_db(db_path: str | PathLike[str] | None = None) -> sqlite3.Connection:
     """Initialise la base de données avec le schema."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
@@ -78,7 +80,8 @@ def init_db(db_path: str | None = None) -> sqlite3.Connection:
     return conn
 
 
-def clear_db(conn: sqlite3.Connection) -> None:
+def clear_db(conn: sqlite3.Connection, *, commit: bool = True) -> None:
     """Supprime toutes les données existantes."""
     conn.execute("DELETE FROM tirages")
-    conn.commit()
+    if commit:
+        conn.commit()

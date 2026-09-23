@@ -12,20 +12,20 @@ Fonctionnalités:
 
 import sqlite3
 from collections import Counter, defaultdict
+from os import PathLike
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
-from src.loto.config import NUM_BALLS, MAX_BALL, NUM_CHANCE_MAX
+from loto.analysis_temporal import hot_cold_numbers, temporal_patterns
+from loto.config import NUM_BALLS, MAX_BALL, NUM_CHANCE_MAX
 
 
-def get_dataframe(db_path: str | None = None) -> pd.DataFrame:
+def get_dataframe(db_path: str | PathLike[str] | None = None) -> pd.DataFrame:
     """Charge tous les tirages dans un DataFrame pandas."""
-    from src.loto.database import get_connection
-
     if db_path is None:
-        from src.loto.config import DB_PATH
+        from loto.config import DB_PATH
         db_path = str(DB_PATH)
 
     conn = sqlite3.connect(db_path)
@@ -234,88 +234,7 @@ def chance_number_analysis(df: pd.DataFrame) -> dict[str, Any]:
     }
 
 
-def temporal_patterns(df: pd.DataFrame) -> dict[str, Any]:
-    """
-    Analyse des patterns temporels:
-    - Tirages par jour de la semaine
-    - Délais entre apparitions successives d'un numéro
-    - Séries (consecutive draws containing a number)
-    """
-    result = {
-        "by_day": {},
-        "avg_delays": {},
-        "longest_absences": {},
-    }
-
-    # Par jour de tirage
-    day_counts = Counter(df["jour_tirage"].dropna().str.strip().values)
-    result["by_day"] = dict(day_counts.most_common())
-
-    # Analyse des délais pour chaque numéro
-    draw_indices = defaultdict(list)
-    for idx, row in df.iterrows():
-        for i in range(1, NUM_BALLS + 1):
-            val = row[f"boule_{i}"]
-            if pd.notna(val):
-                draw_indices[int(val)].append(idx)
-
-    delays = defaultdict(list)
-    longest_absences = {}
-
-    for num, indices in draw_indices.items():
-        if len(indices) < 2:
-            continue
-        gap_list = [indices[i + 1] - indices[i] for i in range(len(indices) - 1)]
-        delays[num].append(float(np.mean(gap_list)))
-
-        # Plus longue absence (depuis la dernière apparition)
-        last_appearance = max(indices)
-        longest_absences[num] = len(df) - last_appearance
-
-    result["avg_delays"] = {k: v[0] for k, v in delays.items()}
-    result["longest_absences"] = longest_absences
-
-    return result
-
-
-def hot_cold_numbers(freq_data: dict, window: int | None = None) -> tuple[list, list]:
-    """
-    Identifie les numéros chauds (fréquents) et froids (rares).
-
-    Args:
-        freq_data: Résultat de frequency_analysis()
-        window: Si spécifié, analyse sur la fenêtre récente (nb de tirages)
-
-    Returns:
-        (hot_numbers, cold_numbers) chacun trié par fréquence décroissante/croissante
-    """
-    if window:
-        # Analyse sur une fenêtre glissante (recent draws only)
-        hot = []
-        cold = []
-        for ball_pos, counter in freq_data["by_ball"].items():
-            top_n = min(window, len(counter))
-            hot.extend(counter.most_common(top_n)[:3])
-            cold.extend(counter.most_common()[-3:])
-        return hot, cold
-
-    # Analyse globale
-    overall = freq_data["overall"]
-    expected_freq = sum(overall.values()) / MAX_BALL  # fréquence attendue si uniforme
-
-    hot = [(num, count) for num, count in overall.most_common() if count > expected_freq * 1.1]
-    cold = [(num, count) for num, count in overall.most_common() if count < expected_freq * 0.9]
-
-    # Trier et limiter aux 10 principaux
-    hot.sort(key=lambda x: x[1], reverse=True)
-    cold.sort(key=lambda x: x[1])
-    hot = hot[:10]
-    cold = cold[:10]
-
-    return hot, cold
-
-
-def run_full_analysis(db_path: str | None = None) -> dict[str, Any]:
+def run_full_analysis(db_path: str | PathLike[str] | None = None) -> dict[str, Any]:
     """
     Lance toutes les analyses et retourne les résultats regroupés.
     """

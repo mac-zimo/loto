@@ -4,8 +4,8 @@ combinaison non triee. Resume console + JSON."""
 import json
 from pathlib import Path
 
-from src.loto.config import CSV_FILES, PROJECT_ROOT, DB_PATH, OUTPUT_DIR
-from src.loto.database import get_connection
+from loto.config import CSV_FILES, PROJECT_ROOT, DB_PATH, OUTPUT_DIR
+from loto.database import get_connection
 
 
 def _count_csv_lines() -> dict[str, int]:

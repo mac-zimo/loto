@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from scipy import signal, stats
-from src.loto.config import MAX_BALL
+from loto.config import MAX_BALL
 
 
 def _binary_series(df: pd.DataFrame) -> dict[int, np.ndarray]:
@@ -70,7 +70,7 @@ def _benjamini_hochberg(p_values: list[float]) -> np.ndarray:
 
 def analyze_periodicity(db_path: str | None = None) -> dict[str, Any]:
     """Analyse exploratoire ACF/FFT avec correction globale des tests multiples."""
-    from src.loto.analysis import get_dataframe
+    from loto.analysis import get_dataframe
 
     df = get_dataframe(db_path)
     n_draws = len(df)
