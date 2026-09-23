@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 # Root directories
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 SRC_DIR = Path(__file__).parent
 DATA_DIR = PROJECT_ROOT / "data"
 OUTPUT_DIR = PROJECT_ROOT / "output"

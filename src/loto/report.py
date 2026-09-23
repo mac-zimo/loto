@@ -168,7 +168,32 @@ def plot_strategy_results(strategy_results: list[dict], output_path: Path | None
     print(f"  Stratégies comparées sauvegardé: {path}")
 
 
-def generate_text_report(analysis: dict, modeling: dict, strategies: list[dict], output_path: Path | None = None):
+def plot_chance_results(chance_results: list[dict], output_path: Path | None = None):
+    """Compare les résultats des stratégies numéro de chance."""
+    ensure_output_dir()
+    path = output_path or OUTPUT_DIR / "chance_strategy_comparison.png"
+
+    names = [r["method"] for r in chance_results]
+    improvements = [r["improvement"] for r in chance_results]
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    colors = ["green" if v >= 0 else "red" for v in improvements]
+    bars = ax.barh(names, improvements, color=colors)
+    ax.set_xlabel("Amélioration ROI vs Random (pp)")
+    ax.set_title("Stratégie Numéro de Chance — Impact sur le ROI")
+    ax.axvline(x=0, color="black", linewidth=0.5)
+
+    for bar, val in zip(bars, improvements):
+        ax.text(bar.get_width() + 0.2, bar.get_y() + bar.get_height()/2,
+                f"{val:+.1f}pp", va="center", fontsize=10)
+
+    plt.tight_layout()
+    fig.savefig(str(path), dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Chance strategy comparison sauvegardé: {path}")
+
+
+def generate_text_report(analysis: dict, modeling: dict, strategies: list[dict], chance_results: list[dict] | None = None, output_path: Path | None = None):
     """
     Génère un rapport textuel complet.
     """
@@ -267,6 +292,19 @@ def generate_text_report(analysis: dict, modeling: dict, strategies: list[dict],
             if s.get('win_dates'):
                 lines.append(f"    Gains sur: {', '.join(s['win_dates'][:5])}")
 
+    # Section 7b: Numéro de chance
+    if chance_results:
+        lines.append("")
+        lines.append("🍀 STRATÉGIE NUMÉRO DE CHANCE")
+        lines.append("-" * 40)
+        for r in chance_results:
+            strat = r["strategy"]
+            baseline = r["random_baseline"]
+            lines.append(f"\n  Méthode '{r['method']}':")
+            lines.append(f"    Stratégie ROI: {strat['roi_pct']}% | Random ROI: {baseline['roi_pct']}%")
+            lines.append(f"    Amélioration: {r['improvement']:+.2f}pp")
+            lines.append(f"    Investi: {strat['total_invested']:.2f}€ | Gagné: {strat['total_won']:.2f}€")
+
     # Section 8: Odds théoriques
     total_combos = math_comb(49, 5)
     lines.append(f"\n📐 PROBABILITÉS THÉORIQUES")
@@ -340,7 +378,7 @@ def plot_distribution_stats(df: pd.DataFrame, dist_data: dict, output_path: Path
     print(f"  Distribution stats sauvegardé: {path}")
 
 
-def generate_full_report(analysis: dict, modeling: dict, strategies: list[dict], df: pd.DataFrame):
+def generate_full_report(analysis: dict, modeling: dict, strategies: list[dict], df: pd.DataFrame, chance_results: list[dict] | None = None):
     """
     Génère tous les rapports et visualisations.
 
@@ -349,6 +387,7 @@ def generate_full_report(analysis: dict, modeling: dict, strategies: list[dict],
         modeling: Résultats de models.run_modeling()
         strategies: Résultats de strategy.run_strategy_backtest()
         df: DataFrame des tirages
+        chance_results: Résultats optionnels de run_chance_evaluation()
 
     Returns:
         Path vers le rapport textuel
@@ -394,8 +433,15 @@ def generate_full_report(analysis: dict, modeling: dict, strategies: list[dict],
         except Exception as e:
             print(f"  Erreur stratégie comparison: {e}")
 
+    # Chance strategy comparison
+    if chance_results:
+        try:
+            plot_chance_results(chance_results)
+        except Exception as e:
+            print(f"  Erreur chance strategy comparison: {e}")
+
     print("\n=== Génération du rapport textuel ===")
-    report_path = generate_text_report(analysis, modeling, strategies)
+    report_path = generate_text_report(analysis, modeling, strategies, chance_results)
 
     # Sauvegarder aussi les résultats complets en JSON
     json_path = OUTPUT_DIR / "analysis_results.json"

@@ -307,6 +307,20 @@ def evaluate_strategy(strategy: BaseStrategy, df: pd.DataFrame, budget_per_draw:
     }
 
 
+def run_chance_evaluation(df: pd.DataFrame) -> list[dict]:
+    """Évalue les stratégies numéro de chance (méthodes alternatives)."""
+    from src.loto.chance_strategy import evaluate_chance_strategy
+
+    results = []
+    for method in ["frequency", "day_conditional", "recent"]:
+        print(f"Évaluation chance '{method}'...")
+        result = evaluate_chance_strategy(df, method=method)
+        results.append(result)
+        print(f"  Stratégie ROI: {result['strategy']['roi_pct']}% | Baseline: {result['random_baseline']['roi_pct']}% | Amélioration: {result['improvement']}pp")
+
+    return results
+
+
 def run_strategy_backtest(df: pd.DataFrame) -> list[dict]:
     """Évalue toutes les stratégies sur les données historiques."""
     strategies = [

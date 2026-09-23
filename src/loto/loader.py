@@ -5,6 +5,7 @@ Gère les différents formats (ancien/nouveau loto).
 
 import csv
 import logging
+import sqlite3
 from pathlib import Path
 from src.loto.config import CSV_FILES, PROJECT_ROOT, DATA_DIR
 from src.loto.database import get_connection, init_db, clear_db
@@ -38,9 +39,12 @@ def load_csv_file(filepath: Path, conn: sqlite3.Connection) -> tuple[int, int]:
     skipped = 0
 
     with open(filepath, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f, delimiter=";")
+        raw = f.read().rstrip()
+        reader = csv.DictReader(raw.splitlines(), delimiter=";")
 
         for row in reader:
+            # Supprimer les clés vides créées par un ';' final dans le header
+            row = {k: v for k, v in row.items() if k is not None and k.strip()}
             try:
                 annee_numero = row.get("annee_numero_de_tirage", "").strip()
                 if not annee_numero:
@@ -112,7 +116,7 @@ def load_csv_file(filepath: Path, conn: sqlite3.Connection) -> tuple[int, int]:
                     parse_float_safe(row.get("rapport_du_rang8", "0")),
                     parse_int_safe(row.get("nombre_de_gagnant_au_rang9", "0")),
                     parse_float_safe(row.get("rapport_du_rang9", "0")),
-                    parse_int_safe(row.get("nombre_codes_gagnants", "0")),
+                    parse_int_safe(row.get("nombre_de_codes_gagnants", "0") or row.get("nombre_codes_gagnants", "0")),
                     parse_float_safe(row.get("rapport_codes_gagnants", "0")),
                     row.get("codes_gagnants", ""),
                     row.get("numero_jokerplus", ""),

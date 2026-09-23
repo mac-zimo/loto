@@ -71,18 +71,21 @@ def main():
 
     # --- Étape 4 : Stratégies & Backtest ---
     logger.info("[4/5] Évaluation des stratégies ...")
-    from src.loto.strategy import run_strategy_backtest
+    from src.loto.strategy import run_strategy_backtest, run_chance_evaluation
     strategies = run_strategy_backtest(df)
+
+    logger.info("[4b/5] Évaluation stratégie numéro de chance ...")
+    chance_results = run_chance_evaluation(df)
 
     # --- Étape 5 : Rapport ---
     if args.skip_plots:
         logger.info("[5/5] Génération du rapport textuel (sans plots) ...")
         from src.loto.report import generate_text_report
-        generate_text_report(analysis, modeling, strategies)
+        generate_text_report(analysis, modeling, strategies, chance_results)
     else:
         logger.info("[5/5] Génération des rapports et visualisations ...")
         from src.loto.report import generate_full_report
-        generate_full_report(analysis, modeling, strategies, df)
+        generate_full_report(analysis, modeling, strategies, df, chance_results)
 
     logger.info("\n=== Pipeline terminé avec succès ===")
 
