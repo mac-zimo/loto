@@ -32,6 +32,12 @@ from .._walk_forward_metrics import NUMBER_COUNT, validate_probabilities
 from ..walk_forward import DrawObservation, History, WalkForwardCallbacks
 from . import _logistic_features
 from ._logistic_features import SupervisedRow
+from ._model_provenance import (
+    ObservationFingerprint,
+    observation_fingerprint as _observation_fingerprint,
+    validate_training_provenance as _validate_training_provenance,
+    validate_visible_training_overlap as _validate_visible_training_overlap,
+)
 from .dirichlet_multinomial import project_bounded_simplex
 
 DEFAULT_LAGS = (1, 2, 3)
@@ -332,66 +338,6 @@ def _training_transform(
     return (values - mean) / scale, mean, scale
 
 
-ObservationFingerprint = tuple[date, int, tuple[int, int, int, int, int]]
-
-
-def _observation_fingerprint(observation: DrawObservation) -> ObservationFingerprint:
-    return (
-        observation.draw_date,
-        observation.original_index,
-        observation.numbers,
-    )
-
-
-def _validate_training_provenance(
-    provenance: object,
-    *,
-    expected_size: int,
-    fitted_through_date: date,
-    fitted_through_original_index: int,
-) -> tuple[ObservationFingerprint, ...]:
-    if type(provenance) is not tuple:
-        raise TypeError("state training_provenance must be an immutable tuple")
-    if len(provenance) != expected_size:
-        raise ValueError("state training_provenance has invalid dimensions")
-
-    checked = []
-    for fingerprint in provenance:
-        if type(fingerprint) is not tuple or len(fingerprint) != 3:
-            raise ValueError("state training_provenance contains a malformed fingerprint")
-        draw_date, original_index, numbers = fingerprint
-        if type(numbers) is not tuple:
-            raise TypeError(
-                "state training_provenance numbers must be an immutable tuple"
-            )
-        try:
-            observation = DrawObservation(
-                draw_date=draw_date,
-                original_index=original_index,
-                numbers=numbers,
-            )
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"state training_provenance contains an invalid fingerprint: {exc}"
-            ) from exc
-        checked.append(_observation_fingerprint(observation))
-
-    result = tuple(checked)
-    if any(left[0] >= right[0] for left, right in zip(result, result[1:])):
-        raise ValueError("state training_provenance dates must be strictly increasing")
-    indices = tuple(fingerprint[1] for fingerprint in result)
-    if len(indices) != len(set(indices)):
-        raise ValueError("state training_provenance original indices must be unique")
-    if result[-1][:2] != (
-        fitted_through_date,
-        fitted_through_original_index,
-    ):
-        raise ValueError(
-            "state training_provenance is inconsistent with fitted_through fields"
-        )
-    return result
-
-
 @dataclass(frozen=True, slots=True)
 class LogisticRegressionState:
     config_identifier: str
@@ -555,43 +501,6 @@ def _validate_state(state: LogisticRegressionState) -> None:
     )
 
 
-def _validate_visible_training_overlap(
-    history: History, state: LogisticRegressionState
-) -> None:
-    training_by_original_index = {
-        fingerprint[1]: fingerprint for fingerprint in state.training_provenance
-    }
-    visible_fingerprints = tuple(
-        _observation_fingerprint(observation) for observation in history
-    )
-    for fingerprint in visible_fingerprints:
-        training_fingerprint = training_by_original_index.get(fingerprint[1])
-        if training_fingerprint is not None and training_fingerprint != fingerprint:
-            raise ValueError("state training provenance diverges from visible history")
-
-    visible_last_date = history[-1].draw_date
-    if state.fitted_through_date > visible_last_date:
-        raise ValueError("state fitted observation is later than visible history")
-
-    visible_first_date = history[0].draw_date
-    if state.fitted_through_date < visible_first_date:
-        return
-
-    training_first_date = state.training_provenance[0][0]
-    training_overlap = tuple(
-        fingerprint
-        for fingerprint in state.training_provenance
-        if visible_first_date <= fingerprint[0] <= visible_last_date
-    )
-    visible_overlap = tuple(
-        fingerprint
-        for fingerprint in visible_fingerprints
-        if training_first_date <= fingerprint[0] <= state.fitted_through_date
-    )
-    if training_overlap != visible_overlap:
-        raise ValueError("state training provenance diverges from visible history")
-
-
 def _sigmoid(score: float) -> float:
     if score >= 0.0:
         inverse = math.exp(-score)
@@ -703,7 +612,11 @@ class LogisticRegressionModel:
         _validate_state(state)
         if state.config_identifier != self.config.identifier:
             raise ValueError("state does not belong to this model configuration")
-        _validate_visible_training_overlap(checked, state)
+        _validate_visible_training_overlap(
+            checked,
+            training_provenance=state.training_provenance,
+            fitted_through_date=state.fitted_through_date,
+        )
 
         feature_matrix = _logistic_features.build_prediction_matrix(
             checked,
