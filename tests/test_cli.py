@@ -8,6 +8,7 @@ import pytest
 
 import loto.cli
 from loto.cli import parse_args
+from loto.data_schema import SourceSchema, schema_contract
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -98,39 +99,30 @@ def test_cli_runs_with_explicit_isolated_paths(tmp_path):
     db_path = tmp_path / "state" / "loto.db"
     output_dir = tmp_path / "reports"
     data_dir.mkdir()
-    headers = [
-        "annee_numero_de_tirage",
-        "jour_de_tirage",
-        "date_de_tirage",
-        "date_de_forclusion",
-        "boule_1",
-        "boule_2",
-        "boule_3",
-        "boule_4",
-        "boule_5",
-        "numero_chance",
-        "combinaison_gagnante_en_ordre_croissant",
-    ]
+    headers = schema_contract(SourceSchema.OCT_2008_MAR_2017).expected_columns
     for index, filename in enumerate(
         ["nouveau_loto.csv", "loto2017.csv", "loto_201902.csv", "loto_201911.csv"],
         start=1,
     ):
         with (data_dir / filename).open("w", encoding="utf-8", newline="") as handle:
+            row = {column: "" for column in headers}
+            row.update({
+                "annee_numero_de_tirage": f"2017{index:03}",
+                "jour_de_tirage": "lundi",
+                "date_de_tirage": "04/03/2017",
+                "date_de_forclusion": "04/05/2017",
+                "boule_1": "1",
+                "boule_2": "2",
+                "boule_3": "3",
+                "boule_4": "4",
+                "boule_5": "5",
+                "numero_chance": str(index),
+                "combinaison_gagnante_en_ordre_croissant": "1-2-3-4-5+1",
+                "devise": "eur",
+            })
             writer = csv.writer(handle, delimiter=";")
             writer.writerow(headers)
-            writer.writerow([
-                f"2026{index:03}",
-                "lundi",
-                f"0{index}/01/2026",
-                "01/03/2026",
-                "1",
-                "2",
-                "3",
-                "4",
-                "5",
-                str(index),
-                "1-2-3-4-5",
-            ])
+            writer.writerow([row[column] for column in headers])
 
     assert loto.cli.main([
         "--skip-plots",

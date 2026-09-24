@@ -21,6 +21,8 @@ et délègue à `pyproject.toml`.
 
 Les tests d'ingestion utilisent des fichiers CSV et des bases SQLite temporaires ;
 ils ne modifient pas les données de production.
+Le contrat canonique, ses règles de validation et la provenance sont décrits dans
+[`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md).
 
 Une couverture peut être calculée avec :
 

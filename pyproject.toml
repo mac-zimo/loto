@@ -37,3 +37,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"
+markers = [
+    "integration: validates the complete read-only FDJ archive set",
+]

@@ -3,20 +3,44 @@ Charge les fichiers CSV du Loto dans la base SQLite.
 Gère les différents formats (ancien/nouveau loto).
 """
 
-import csv
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from os import PathLike
 from pathlib import Path
 from loto.config import CSV_FILES, DATA_DIR, DB_PATH
-from loto.database import init_db, clear_db
+from loto.database import clear_db, get_connection, init_db, initialize_schema
+from loto.data_persistence import (
+    assert_reset_invariants,
+    persist_draw,
+    persist_source_file,
+    update_source_counts,
+)
+from loto.data_source import (
+    DuplicateDrawIdError,
+    PreflightSource,
+    SourceInspection,
+    inspect_source,
+    preflight_source_set,
+)
+from loto.data_schema import (
+    StructuredValidationError,
+    parse_canonical_draw,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class RowImportError(RuntimeError):
     """Raised when strict CSV loading cannot import a row."""
+
+    def __init__(self, error: StructuredValidationError, draw_id: str = "") -> None:
+        self.validation_error = error
+        identifier = draw_id or "identifiant manquant"
+        super().__init__(f"{identifier}: {error}")
+
+    def as_dict(self) -> dict[str, str | int | None]:
+        return self.validation_error.as_dict()
 
 
 def parse_int_safe(val: str, default=0, *, strict: bool = False) -> int:
@@ -58,6 +82,7 @@ def load_csv_file(
     *,
     commit: bool = True,
     strict: bool = False,
+    _inspection: SourceInspection | PreflightSource | None = None,
 ) -> tuple[int, int]:
     """
     Charge un fichier CSV dans la base de données.
@@ -68,116 +93,77 @@ def load_csv_file(
 
     Returns: (total_lus, insertes)
     """
-    inserted = 0
-    skipped = 0
-
-    with open(filepath, "r", encoding="utf-8") as f:
-        raw = f.read().rstrip()
-        reader = csv.DictReader(raw.splitlines(), delimiter=";")
-
-        for row in reader:
-            # Supprimer les clés vides créées par un ';' final dans le header
-            row = {k: v for k, v in row.items() if k is not None and k.strip()}
-            annee_numero = ""
+    prepared = _inspection if isinstance(_inspection, PreflightSource) else None
+    if prepared:
+        inspection = prepared.inspection
+    else:
+        inspection = (
+            _inspection
+            if isinstance(_inspection, SourceInspection)
+            else inspect_source(filepath)
+        )
+    imported_at = prepared.imported_at if prepared else datetime.now(timezone.utc)
+    accepted = list(prepared.canonical_draws) if prepared else []
+    rejected = len(prepared.row_errors) if prepared else 0
+    if not prepared:
+        for inspected_row in inspection.rows:
+            if inspected_row.error is not None:
+                if strict:
+                    raise RowImportError(inspected_row.error) from inspected_row.error
+                logger.warning("Validation CSV: %s", inspected_row.error.as_dict())
+                rejected += 1
+                continue
+            row = inspected_row.values
+            assert row is not None
             try:
-                annee_numero = row.get("annee_numero_de_tirage", "").strip()
-                if not annee_numero:
-                    if strict:
-                        raise ValueError("annee_numero_de_tirage est obligatoire")
-                    skipped += 1
-                    continue
-
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO tirages (
-                        annee_numero, jour_tirage, date_tirage, date_forclusion,
-                        boule_1, boule_2, boule_3, boule_4, boule_5, numero_chance,
-                        combinaison_croissante,
-                        gagnants_rang1, rapport_rang1,
-                        gagnants_rang2, rapport_rang2,
-                        gagnants_rang3, rapport_rang3,
-                        gagnants_rang4, rapport_rang4,
-                        gagnants_rang5, rapport_rang5,
-                        gagnants_rang6, rapport_rang6,
-                        gagnants_rang7, rapport_rang7,
-                        gagnants_rang8, rapport_rang8,
-                        gagnants_rang9, rapport_rang9,
-                        nombre_codes, rapport_codes, codes_gagnants,
-                        numero_jokerplus, devise
-                    ) VALUES (
-                        ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?,
-                        ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?, ?, ?, ?
-                    ) ON CONFLICT(annee_numero) DO NOTHING
-                """, (
-                    annee_numero,
-                    row.get("jour_de_tirage", "").strip(),
-                    normalize_date(row.get("date_de_tirage", "")),
-                    normalize_date(row.get("date_de_forclusion", "")),
-                    parse_int_safe(row.get("boule_1", "0"), strict=strict),
-                    parse_int_safe(row.get("boule_2", "0"), strict=strict),
-                    parse_int_safe(row.get("boule_3", "0"), strict=strict),
-                    parse_int_safe(row.get("boule_4", "0"), strict=strict),
-                    parse_int_safe(row.get("boule_5", "0"), strict=strict),
-                    parse_int_safe(row.get("numero_chance", "0"), strict=strict),
-                    row.get("combinaison_gagnante_en_ordre_croissant", ""),
-                    parse_int_safe(row.get("nombre_de_gagnant_au_rang1", "0"), strict=strict),
-                    parse_float_safe(row.get("rapport_du_rang1", "0"), strict=strict),
-                    parse_int_safe(row.get("nombre_de_gagnant_au_rang2", "0"), strict=strict),
-                    parse_float_safe(row.get("rapport_du_rang2", "0"), strict=strict),
-                    parse_int_safe(row.get("nombre_de_gagnant_au_rang3", "0"), strict=strict),
-                    parse_float_safe(row.get("rapport_du_rang3", "0"), strict=strict),
-                    parse_int_safe(row.get("nombre_de_gagnant_au_rang4", "0"), strict=strict),
-                    parse_float_safe(row.get("rapport_du_rang4", "0"), strict=strict),
-                    parse_int_safe(row.get("nombre_de_gagnant_au_rang5", "0"), strict=strict),
-                    parse_float_safe(row.get("rapport_du_rang5", "0"), strict=strict),
-                    parse_int_safe(row.get("nombre_de_gagnant_au_rang6", "0"), strict=strict),
-                    parse_float_safe(row.get("rapport_du_rang6", "0"), strict=strict),
-                    parse_int_safe(row.get("nombre_de_gagnant_au_rang7", "0"), strict=strict),
-                    parse_float_safe(row.get("rapport_du_rang7", "0"), strict=strict),
-                    parse_int_safe(row.get("nombre_de_gagnant_au_rang8", "0"), strict=strict),
-                    parse_float_safe(row.get("rapport_du_rang8", "0"), strict=strict),
-                    parse_int_safe(row.get("nombre_de_gagnant_au_rang9", "0"), strict=strict),
-                    parse_float_safe(row.get("rapport_du_rang9", "0"), strict=strict),
-                    parse_int_safe(
-                        row.get("nombre_de_codes_gagnants", "0")
-                        or row.get("nombre_codes_gagnants", "0"),
-                        strict=strict,
-                    ),
-                    parse_float_safe(row.get("rapport_codes_gagnants", "0"), strict=strict),
-                    row.get("codes_gagnants", ""),
-                    row.get("numero_jokerplus", ""),
-                    row.get("devise", "EUR"),
+                accepted.append(parse_canonical_draw(
+                    row,
+                    schema=inspection.schema,
+                    source_filename=filepath.name,
+                    source_sha256=inspection.sha256,
+                    source_row=inspected_row.source_row,
+                    imported_at=imported_at,
                 ))
-
-                if cursor.rowcount > 0:
-                    inserted += 1
-                else:
-                    skipped += 1  # déjà présent
-
-            except (ValueError, TypeError, OverflowError, sqlite3.IntegrityError) as e:
+            except StructuredValidationError as error:
                 if strict:
                     raise RowImportError(
-                        f"Échec de l'import de {filepath}, ligne {reader.line_num} "
-                        f"({annee_numero or 'identifiant manquant'}): {e}"
-                    ) from e
-                logger.warning(f"Erreur ligne {annee_numero}: {e}")
-                skipped += 1
+                        error, row.get("annee_numero_de_tirage", "").strip()
+                    ) from error
+                logger.warning("Validation CSV: %s", error.as_dict())
+                rejected += 1
+
+    if not accepted:
+        raise StructuredValidationError(
+            "source contains zero accepted rows",
+            filename=filepath.name,
+            source_row=None,
+            field="rows",
+        )
+
+    source_file_id = persist_source_file(
+        conn,
+        filename=filepath.name,
+        sha256=inspection.sha256,
+        size_bytes=inspection.size_bytes,
+        schema=inspection.schema,
+        imported_at=imported_at.isoformat(),
+        rows_read=len(inspection.rows),
+    )
+    inserted = sum(
+        persist_draw(conn, draw, source_file_id, reject_conflict=strict)
+        for draw in accepted
+    )
+    update_source_counts(
+        conn,
+        source_file_id,
+        accepted=len(accepted),
+        rejected=rejected,
+        duplicates=len(accepted) - inserted,
+    )
 
     if commit:
         conn.commit()
-    total = inserted + skipped
-    return total, inserted
+    return len(inspection.rows), inserted
 
 
 def load_all_db(
@@ -219,22 +205,48 @@ def load_all_db(
     if not source_files:
         return 0, 0
 
-    conn = init_db(db_path or DB_PATH)
+    prepared_sources = None
+    if reset:
+        inspections = [inspect_source(filepath) for filepath in source_files]
+        try:
+            prepared_sources = preflight_source_set(inspections)
+        except DuplicateDrawIdError:
+            raise
+        except StructuredValidationError as error:
+            if error.source_row is None:
+                raise
+            draw_id = ""
+            for inspection in inspections:
+                if inspection.path.name != error.filename:
+                    continue
+                row = next(
+                    (item for item in inspection.rows if item.source_row == error.source_row),
+                    None,
+                )
+                if row and row.values:
+                    draw_id = row.values.get("annee_numero_de_tirage", "").strip()
+                break
+            raise RowImportError(error, draw_id) from error
+
+    conn = get_connection(db_path or DB_PATH) if reset else init_db(db_path or DB_PATH)
     total_loaded = 0
     total_inserted = 0
 
     try:
         if reset:
+            conn.execute("BEGIN")
+            initialize_schema(conn, commit=False)
             clear_db(conn, commit=False)
             logger.info("Base de données vidée (transaction en cours).")
 
-        for filepath in source_files:
+        for index, filepath in enumerate(source_files):
             logger.info(f"Chargement de {filepath.name}...")
             loaded, inserted = load_csv_file(
                 filepath,
                 conn,
                 commit=not reset,
                 strict=reset,
+                _inspection=prepared_sources[index] if prepared_sources else None,
             )
             total_loaded += loaded
             total_inserted += inserted
@@ -250,6 +262,15 @@ def load_all_db(
         logger.info(f"Total dans la BD: {count} tirages")
 
         if reset:
+            accepted = sum(
+                len(source.canonical_draws) for source in prepared_sources or ()
+            )
+            assert_reset_invariants(
+                conn,
+                loaded=total_loaded,
+                accepted=accepted,
+                inserted=total_inserted,
+            )
             conn.commit()
     except Exception:
         if reset:
