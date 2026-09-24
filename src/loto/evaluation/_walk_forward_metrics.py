@@ -13,6 +13,8 @@ import numpy as np
 
 NUMBER_COUNT = 49
 DRAW_SIZE = 5
+UNIFORM_PROBABILITY = DRAW_SIZE / NUMBER_COUNT
+UNIFORM_PROBABILITIES = (UNIFORM_PROBABILITY,) * NUMBER_COUNT
 # Float32 normalization can accumulate slightly over 1e-6 across 49 marginals;
 # 1e-5 leaves a rounding margin while still rejecting material sum errors.
 PROBABILITY_SUM_TOLERANCE = 1e-5
@@ -67,28 +69,47 @@ def validate_probabilities(values: Sequence[float]) -> tuple[float, ...]:
     return tuple(float(value) for value in probabilities)
 
 
-def _validate_target_numbers(values: object) -> tuple[int, int, int, int, int]:
+def _validate_numbers(
+    values: object, *, name: str
+) -> tuple[int, int, int, int, int]:
     try:
-        target_numbers = tuple(values)  # type: ignore[arg-type]
+        numbers = tuple(values)  # type: ignore[arg-type]
     except TypeError as exc:
-        raise TypeError("target_numbers must contain exactly five integers") from exc
-    if len(target_numbers) != DRAW_SIZE:
-        raise ValueError("target_numbers must contain exactly five values")
+        raise TypeError(f"{name} must contain exactly five integers") from exc
+    if len(numbers) != DRAW_SIZE:
+        raise ValueError(f"{name} must contain exactly five values")
     if any(
         not isinstance(number, int) or isinstance(number, bool)
-        for number in target_numbers
+        for number in numbers
     ):
-        raise TypeError("target_numbers must contain only integers")
-    if any(not 1 <= number <= NUMBER_COUNT for number in target_numbers):
-        raise ValueError("target_numbers must be between 1 and 49")
-    if len(set(target_numbers)) != DRAW_SIZE:
-        raise ValueError("target_numbers must be unique")
-    return target_numbers
+        raise TypeError(f"{name} must contain only integers")
+    if any(not 1 <= number <= NUMBER_COUNT for number in numbers):
+        raise ValueError(f"{name} must be between 1 and 49")
+    if len(set(numbers)) != DRAW_SIZE:
+        raise ValueError(f"{name} must be unique")
+    return numbers  # type: ignore[return-value]
+
+
+def _validate_target_numbers(values: object) -> tuple[int, int, int, int, int]:
+    return _validate_numbers(values, name="target_numbers")
+
+
+def validate_selected_numbers(values: object) -> tuple[int, int, int, int, int]:
+    """Validate an explicitly realized five-number grid."""
+
+    return _validate_numbers(values, name="selected_numbers")
 
 
 def _validated_predictions(
     records: Sequence[PredictionLike],
-) -> tuple[tuple[tuple[float, ...], tuple[int, int, int, int, int]], ...]:
+) -> tuple[
+    tuple[
+        tuple[float, ...],
+        tuple[int, int, int, int, int],
+        tuple[int, int, int, int, int] | None,
+    ],
+    ...,
+]:
     validated = []
     for record in records:
         if not all(
@@ -100,7 +121,11 @@ def _validated_predictions(
             )
         target_numbers = _validate_target_numbers(record.target_numbers)
         probabilities = validate_probabilities(record.probabilities)
-        validated.append((probabilities, target_numbers))
+        selected = getattr(record, "selected_numbers", None)
+        selected_numbers = (
+            None if selected is None else validate_selected_numbers(selected)
+        )
+        validated.append((probabilities, target_numbers, selected_numbers))
     return tuple(validated)
 
 
@@ -125,7 +150,12 @@ def _average_descending_ranks(probabilities: Sequence[float]) -> tuple[float, ..
 def evaluate_predictions(
     records: Sequence[PredictionLike], *, calibration_bins: int = 10
 ) -> EvaluationMetrics:
-    """Aggregate per-number out-of-sample metrics; regret is excess log-loss."""
+    """Aggregate out-of-sample metrics; regret is excess log-loss.
+
+    Probabilistic metrics always use ex-ante marginals. ``mean_matches`` uses an
+    explicitly realized grid when supplied, and otherwise the probability
+    vector's deterministic top-five selection.
+    """
 
     predictions = tuple(records)
     if not predictions:
@@ -140,7 +170,7 @@ def evaluate_predictions(
     squared_errors = []
     matches = []
     true_ranks = []
-    for probabilities, target_numbers in validated_predictions:
+    for probabilities, target_numbers, selected_numbers in validated_predictions:
         truth = set(target_numbers)
         outcomes = tuple(number in truth for number in range(1, NUMBER_COUNT + 1))
         losses.extend(
@@ -155,7 +185,12 @@ def evaluate_predictions(
             range(1, NUMBER_COUNT + 1),
             key=lambda number: (-probabilities[number - 1], number),
         )
-        matches.append(len(set(ranked_numbers[:DRAW_SIZE]) & truth))
+        evaluated_selection = (
+            ranked_numbers[:DRAW_SIZE]
+            if selected_numbers is None
+            else selected_numbers
+        )
+        matches.append(len(set(evaluated_selection) & truth))
         average_ranks = _average_descending_ranks(probabilities)
         true_ranks.extend(average_ranks[number - 1] for number in truth)
         all_probabilities.extend(probabilities)
@@ -176,10 +211,9 @@ def evaluate_predictions(
             )
 
     log_loss = float(np.mean(losses))
-    uniform_probability = DRAW_SIZE / NUMBER_COUNT
     uniform_loss = -(
-        DRAW_SIZE * math.log(uniform_probability)
-        + (NUMBER_COUNT - DRAW_SIZE) * math.log1p(-uniform_probability)
+        DRAW_SIZE * math.log(UNIFORM_PROBABILITY)
+        + (NUMBER_COUNT - DRAW_SIZE) * math.log1p(-UNIFORM_PROBABILITY)
     ) / NUMBER_COUNT
     return EvaluationMetrics(
         log_loss=log_loss,

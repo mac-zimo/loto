@@ -2,7 +2,8 @@
 
 Every callback receives an immutable history ending strictly before its target.
 Probability vectors contain the 49 marginal inclusion probabilities for a 5/49
-selection. Their sum must equal five within ``PROBABILITY_SUM_TOLERANCE``.
+selection. Their sum must equal five within ``PROBABILITY_SUM_TOLERANCE``. A
+predictor may additionally report the separately realized five-number grid.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from ._walk_forward_metrics import (
     PROBABILITY_SUM_TOLERANCE,
     EvaluationMetrics,
     evaluate_predictions,
+    validate_selected_numbers,
     validate_probabilities,
 )
 
@@ -62,7 +64,20 @@ class PredictCallback(Protocol):
         feature_data: Any,
         *,
         rng: np.random.Generator,
-    ) -> Sequence[float]: ...
+    ) -> Sequence[float] | PredictionResult: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PredictionResult:
+    """Ex-ante marginal probabilities and an optional realized selection."""
+
+    probabilities: tuple[float, ...]
+    selected_numbers: tuple[int, ...] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "probabilities", tuple(self.probabilities))
+        if self.selected_numbers is not None:
+            object.__setattr__(self, "selected_numbers", tuple(self.selected_numbers))
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,6 +211,7 @@ class PredictionRecord:
     fitted_through_original_index: int
     window_index: int
     retrained: bool
+    selected_numbers: tuple[int, int, int, int, int] | None = None
 
 
 def _validated_draws(draws: Sequence[DrawObservation]) -> tuple[DrawObservation, ...]:
@@ -448,14 +464,22 @@ def run_walk_forward(
                         history_original_indices,
                     ),
                 )
-            probabilities = validate_probabilities(
-                callbacks.predict(
-                    history,
-                    state,
-                    prediction_features,
-                    rng=_rng(config.seed, "predict", history_original_indices),
-                )
+            prediction = callbacks.predict(
+                history,
+                state,
+                prediction_features,
+                rng=_rng(config.seed, "predict", history_original_indices),
             )
+            if isinstance(prediction, PredictionResult):
+                probabilities = validate_probabilities(prediction.probabilities)
+                selected_numbers = (
+                    None
+                    if prediction.selected_numbers is None
+                    else validate_selected_numbers(prediction.selected_numbers)
+                )
+            else:
+                probabilities = validate_probabilities(prediction)
+                selected_numbers = None
             assert fitted_through_date is not None and fitted_through is not None
             target = observations[target_position]
             records.append(
@@ -464,6 +488,7 @@ def run_walk_forward(
                     target_original_index=target.original_index,
                     target_numbers=target.numbers,
                     probabilities=probabilities,
+                    selected_numbers=selected_numbers,
                     history_dates=tuple(draw.draw_date for draw in history),
                     history_original_indices=history_original_indices,
                     fitted_through_date=fitted_through_date,
@@ -485,6 +510,7 @@ __all__ = [
     "FitCallback",
     "PredictCallback",
     "PredictionRecord",
+    "PredictionResult",
     "RetrainPolicy",
     "WalkForwardCallbacks",
     "WalkForwardConfig",

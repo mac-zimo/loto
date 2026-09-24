@@ -21,6 +21,8 @@ from loto.evaluation.walk_forward import (
     PROBABILITY_SUM_TOLERANCE,
     DrawObservation,
     EvaluationWindow,
+    PredictionRecord,
+    PredictionResult,
     PredictCallback,
     RetrainPolicy,
     WalkForwardCallbacks,
@@ -98,14 +100,32 @@ def _run(
 
 def test_future_observation_cannot_change_earlier_predictions():
     draws = _draws(10)
-    changed_future = draws[:-1] + (replace(draws[-1], numbers=(45, 46, 47, 48, 49)),)
+    changed_index = 8
+    changed_future = (
+        *draws[:changed_index],
+        replace(draws[changed_index], numbers=(45, 46, 47, 48, 49)),
+        *draws[changed_index + 1 :],
+    )
 
     original = _run(draws)
     changed = _run(changed_future)
-
-    assert [record.probabilities for record in original[:-1]] == [
-        record.probabilities for record in changed[:-1]
+    unaffected_original = [
+        record
+        for record in original
+        if draws[changed_index].original_index not in record.history_original_indices
     ]
+    unaffected_changed = [
+        record
+        for record in changed
+        if draws[changed_index].original_index not in record.history_original_indices
+    ]
+
+    assert [
+        (record.probabilities, record.selected_numbers) for record in unaffected_original
+    ] == [
+        (record.probabilities, record.selected_numbers) for record in unaffected_changed
+    ]
+    assert unaffected_original[-1].target_original_index == draws[changed_index].original_index
 
 
 def test_bounded_multi_draw_callbacks_receive_no_target_context_or_position():
@@ -477,6 +497,23 @@ def test_metrics_are_correct_for_a_calculable_perfect_example():
     assert metrics.regret_vs_uniform == pytest.approx(-uniform_loss)
 
 
+def test_prediction_record_preserves_the_original_positional_signature():
+    record = PredictionRecord(
+        date(2020, 2, 1),
+        101,
+        (1, 2, 3, 4, 5),
+        (5 / 49,) * 49,
+        (date(2020, 1, 1),),
+        (100,),
+        date(2020, 1, 1),
+        100,
+        0,
+        True,
+    )
+
+    assert record.selected_numbers is None
+
+
 def test_true_number_rank_uses_label_neutral_average_ranks_for_ties():
     draws = _draws(5)
 
@@ -513,17 +550,17 @@ def test_true_number_rank_uses_label_neutral_average_ranks_for_ties():
 
 
 @pytest.mark.parametrize(
-    "values",
+    ("values", "message"),
     [
-        [5 / 49] * 48,
-        [5 / 49] * 48 + [math.nan],
-        [5 / 49] * 48 + [-0.1],
-        [5 / 49] * 48 + [1.1],
-        [0.0] * 49,
+        ([5 / 49] * 48, "exactly 49"),
+        ([5 / 49] * 48 + [math.nan], "finite"),
+        ([5 / 49] * 48 + [-0.1], r"\[0, 1\]"),
+        ([5 / 49] * 48 + [1.1], r"\[0, 1\]"),
+        ([0.0] * 49, "sum to 5"),
     ],
 )
-def test_invalid_probability_vectors_are_rejected(values):
-    with pytest.raises(ValueError, match="probabil"):
+def test_invalid_probability_vectors_are_rejected_explicitly(values, message):
+    with pytest.raises(ValueError, match=message):
         validate_probabilities(values)
 
 
@@ -632,6 +669,41 @@ def test_probability_vectors_reject_sum_beyond_documented_tolerance():
 
     with pytest.raises(ValueError, match="sum to 5"):
         validate_probabilities(values)
+
+
+@pytest.mark.parametrize(
+    ("selected_numbers", "error", "message"),
+    [
+        ((1, 2, 3, 4), ValueError, "exactly five"),
+        ((1, 2, 3, 4, 5, 6), ValueError, "exactly five"),
+        ((1, 1, 2, 3, 4), ValueError, "unique"),
+        ((True, 2, 3, 4, 5), TypeError, "integers"),
+        ((1.0, 2, 3, 4, 5), TypeError, "integers"),
+        ((0, 1, 2, 3, 4), ValueError, "between 1 and 49"),
+        ((1, 2, 3, 4, 50), ValueError, "between 1 and 49"),
+    ],
+)
+def test_walk_forward_rejects_invalid_optional_realized_grids(
+    selected_numbers, error, message
+):
+    draws = _draws(5)
+
+    def fit(history, feature_data, *, rng):
+        return None
+
+    def predict(history, state, feature_data, *, rng):
+        return PredictionResult(
+            probabilities=(5 / 49,) * 49,
+            selected_numbers=selected_numbers,
+        )
+
+    with pytest.raises(error, match=message):
+        run_walk_forward(
+            draws,
+            (EvaluationWindow(0, 4, 4, 5),),
+            WalkForwardCallbacks(fit=fit, predict=predict),
+            WalkForwardConfig(initial_train_size=4),
+        )
 
 
 @pytest.mark.parametrize(
