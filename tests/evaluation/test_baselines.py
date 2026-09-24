@@ -132,7 +132,27 @@ def test_rolling_frequency_uses_only_last_n_and_identifier_includes_n():
         probabilities[number - 1] == pytest.approx((5 / 49) / 3)
         for number in range(40, 45)
     )
-    assert baseline.identifier == "rolling_frequency_window=2_alpha=1"
+    assert baseline.identifier == "rolling_frequency_window=2_alpha=1.0"
+
+
+def test_frequency_identifiers_distinguish_close_float_alphas():
+    first_alpha = 1.0000001
+    second_alpha = 1.0000002
+    cumulative_first = cumulative_frequency_baseline(alpha=first_alpha)
+    cumulative_second = cumulative_frequency_baseline(alpha=second_alpha)
+    rolling_first = rolling_frequency_baseline(window_size=2, alpha=first_alpha)
+    rolling_second = rolling_frequency_baseline(window_size=2, alpha=second_alpha)
+
+    assert cumulative_first.identifier == f"cumulative_frequency_alpha={first_alpha!r}"
+    assert cumulative_second.identifier == f"cumulative_frequency_alpha={second_alpha!r}"
+    assert cumulative_first.identifier != cumulative_second.identifier
+    assert rolling_first.identifier == (
+        f"rolling_frequency_window=2_alpha={first_alpha!r}"
+    )
+    assert rolling_second.identifier == (
+        f"rolling_frequency_window=2_alpha={second_alpha!r}"
+    )
+    assert rolling_first.identifier != rolling_second.identifier
 
 
 def test_rolling_frequency_rejects_short_history_and_invalid_windows():

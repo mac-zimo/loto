@@ -131,7 +131,7 @@ class CumulativeFrequencyBaseline:
 
     @property
     def identifier(self) -> str:
-        return f"cumulative_frequency_alpha={self.alpha:g}"
+        return f"cumulative_frequency_alpha={self.alpha!r}"
 
     @property
     def callbacks(self) -> WalkForwardCallbacks:
@@ -172,7 +172,7 @@ class RollingFrequencyBaseline:
 
     @property
     def identifier(self) -> str:
-        return f"rolling_frequency_window={self.window_size}_alpha={self.alpha:g}"
+        return f"rolling_frequency_window={self.window_size}_alpha={self.alpha!r}"
 
     @property
     def callbacks(self) -> WalkForwardCallbacks:
