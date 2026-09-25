@@ -1,0 +1,246 @@
+{
+  "candidates": [
+    {
+      "id": "uniform",
+      "kind": "baseline",
+      "label": "uniform",
+      "parameters": {}
+    },
+    {
+      "id": "cumulative_frequency_alpha=1.0",
+      "kind": "baseline",
+      "label": "cumulative",
+      "parameters": {
+        "alpha": 1.0
+      }
+    },
+    {
+      "id": "rolling_frequency_window=5_alpha=1.0",
+      "kind": "baseline",
+      "label": "rolling_5",
+      "parameters": {
+        "alpha": 1.0,
+        "window_size": 5
+      }
+    },
+    {
+      "id": "rolling_frequency_window=10_alpha=1.0",
+      "kind": "baseline",
+      "label": "rolling_10",
+      "parameters": {
+        "alpha": 1.0,
+        "window_size": 10
+      }
+    },
+    {
+      "id": "rolling_frequency_window=25_alpha=1.0",
+      "kind": "baseline",
+      "label": "rolling_25",
+      "parameters": {
+        "alpha": 1.0,
+        "window_size": 25
+      }
+    },
+    {
+      "id": "rolling_frequency_window=50_alpha=1.0",
+      "kind": "baseline",
+      "label": "rolling_50",
+      "parameters": {
+        "alpha": 1.0,
+        "window_size": 50
+      }
+    },
+    {
+      "id": "constrained_random",
+      "kind": "baseline",
+      "label": "constrained_random",
+      "parameters": {}
+    },
+    {
+      "id": "dirichlet_multinomial_marginal_concentration=1.0_minimum_history=1_prior=uniform_5_over_49",
+      "kind": "family",
+      "label": "dirichlet",
+      "parameters": {
+        "concentration": 1.0,
+        "minimum_history": 1,
+        "prior_mean": [
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061,
+          0.10204081632653061
+        ]
+      }
+    },
+    {
+      "id": "logistic_regression_per_number_l2_lags=1,2,3_windows=5,10,25,50_C=1.0_penalty=l2_solver=liblinear_max_iter=1000_tol=0.0001_minimum_history=60_standardize=true_random_state=0",
+      "kind": "family",
+      "label": "logistic",
+      "parameters": {
+        "C": 1.0,
+        "lags": [
+          1,
+          2,
+          3
+        ],
+        "max_iter": 1000,
+        "minimum_history": 60,
+        "penalty": "l2",
+        "random_state": 0,
+        "solver": "liblinear",
+        "standardize": true,
+        "tol": 0.0001,
+        "windows": [
+          5,
+          10,
+          25,
+          50
+        ]
+      }
+    },
+    {
+      "id": "discrete_time_hazard_per_number_recurrent_bins=0,1,2,3,4,8,16,32_prior_mean=0.10204081632653061_prior_strength=10.0_minimum_history=60_age=elapsed_since_last_minus_one_left=exclude_before_first_right=count_observed_exposures_only_never_observed=reject_empty_bin=beta_prior_only",
+      "kind": "family",
+      "label": "hazard",
+      "parameters": {
+        "age_bin_lower_bounds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          8,
+          16,
+          32
+        ],
+        "minimum_history": 60,
+        "prior_mean": 0.10204081632653061,
+        "prior_strength": 10.0
+      }
+    }
+  ],
+  "dataset": {
+    "contract": {
+      "draw_count": 2811,
+      "first_date": "2008-10-06",
+      "last_date": "2026-09-21"
+    },
+    "files": [
+      "nouveau_loto.csv",
+      "loto2017.csv",
+      "loto_201902.csv",
+      "loto_201911.csv"
+    ],
+    "loader": "full archive date/count check; pre-2026 canonical preflight; no SQLite",
+    "manifest": {
+      "files": [
+        {
+          "path": "loto2017.csv",
+          "sha256": "bb94c49747b0b8412f6461e0b6d40f811e411499ec0657f540f9dbdd4c503472"
+        },
+        {
+          "path": "loto_201902.csv",
+          "sha256": "3bdfb1024ae42a44d4b29e92a5c049a7240cae707c7c099a948bf87013fd53da"
+        },
+        {
+          "path": "loto_201911.csv",
+          "sha256": "aa9a3f40b758d22dcaa8a8b6f5f53ee6d86aa7d232890b9195d8545f322da8b0"
+        },
+        {
+          "path": "nouveau_loto.csv",
+          "sha256": "0823a148e8d177daf2b0c4f0a586bb14ccc4b2b2dba112a7b958ec76b09d8d66"
+        }
+      ],
+      "sha256": "54c97b5b9e4a5df574d61bdca9af909d6bd06c15b6a5531bb59a1612bedb7b0f"
+    },
+    "original_index_derivation": "zero-based position after pre-2026 canonical validation and strict chronological sort"
+  },
+  "decision_rule": "aggregate log_loss and brier strictly below cumulative alpha=1 and uniform, plus both strictly below both comparators in at least 3 complete calendar years; descriptive screening only; significance and holdout 2026 untouched are required for promotion",
+  "exclusion_2026": {
+    "status": "future_partial_untouched",
+    "targets": 0,
+    "year": 2026
+  },
+  "executed_commit": "87cafb14114013f29055113982dd706f3d4b0952",
+  "expected_commit": "87cafb14114013f29055113982dd706f3d4b0952",
+  "hyperparameter_search": false,
+  "id": "EXP-2026-09-25-TASK-2.3A-ARCHIVE-WF-001",
+  "metrics": [
+    "log_loss",
+    "brier",
+    "mean_matches",
+    "calibration_error",
+    "mean_true_number_rank",
+    "regret_vs_uniform"
+  ],
+  "preregistration_date": "2026-09-25",
+  "promotion_rule": "No promotion from point estimates: significance on at least three periods and confirmation on the untouched holdout remain mandatory.",
+  "seed": 20260925,
+  "split": {
+    "annual_windows": [
+      2014,
+      2015,
+      2016,
+      2017,
+      2018,
+      2019,
+      2020,
+      2021,
+      2022,
+      2023,
+      2024,
+      2025
+    ],
+    "evaluation_end_year": 2025,
+    "evaluation_start_year": 2014,
+    "history": "expanding",
+    "initial_train": "all draws strictly before 2014-01-01",
+    "initial_train_size": 820,
+    "max_train_size": null,
+    "retrain_policy": "each_draw"
+  }
+}
