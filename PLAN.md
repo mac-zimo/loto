@@ -171,6 +171,67 @@ Chaque famille reçoit un identifiant et une limite d'essais pour réduire le da
 
 **Seuil de promotion :** amélioration hors échantillon statistiquement et économiquement significative sur au moins trois périodes, puis confirmation finale sur un holdout jamais consulté.
 
+### Tâche 2.3a — Première comparaison réelle préenregistrée sur archives
+
+**ID :** `EXP-2026-09-25-TASK-2.3A-ARCHIVE-WF-001`.
+
+**Données et temps :** figer les quatre archives officielles versionnées
+`nouveau_loto.csv`, `loto2017.csv`, `loto_201902.csv` et `loto_201911.csv`.
+Le contrat strict exige exactement 2 811 tirages, du 2008-10-06 au 2026-09-21.
+L'apprentissage initial contient tous les tirages strictement antérieurs au
+1er janvier 2014. L'évaluation utilise les douze années calendaires complètes
+2014 à 2025 via `annual_windows(evaluation_start_year=2014,
+evaluation_end_year=2025)`, avec historique expansif et aucune fenêtre bornée.
+L'année partielle 2026 reste une période future intacte : aucune cible 2026 ne
+peut entrer dans cette tâche.
+
+**Configuration figée :** `retrain_policy=EACH_DRAW`, seed `20260925`, aucune
+recherche hyperparamétrique. Les candidats, dans l'ordre, sont : uniforme
+exacte ; fréquence cumulative `alpha=1.0` ; fréquences glissantes `window=5`,
+`10`, `25`, `50`, chacune avec `alpha=1.0` ; aléatoire contraint à marginales
+uniformes et grille séparée ; Dirichlet uniforme `concentration=1.0`,
+`minimum_history=1` ; régression logistique préenregistrée par défaut ; hazard
+discret préenregistré par défaut. Les identifiants proviennent des objets de
+configuration. Les métriques existantes restent inchangées : log-loss, Brier,
+correspondances moyennes, calibration, rang moyen des vrais numéros et regret
+face à l'uniforme.
+
+**Décision :** le screening d'une famille exige des log-loss et Brier agrégés
+strictement meilleurs que la cumulative et l'uniforme, ainsi qu'une amélioration
+conjointe sur au moins trois années complètes. Un succès reste
+`non_promu_significativite_et_holdout_requis`; sinon la famille est
+`rejete_au_screening_descriptif`. Aucune promotion ne repose sur les seules
+estimations ponctuelles : elle exige toujours une significativité sur au moins
+trois périodes puis une confirmation sur holdout intact.
+
+**Livrables et validation :** produire de façon déterministe et sans écrasement
+`artifacts/task-2.3a-archive-walk-forward/preregistration.json`, `metrics.csv`
+et `result.json`, puis une entrée append-only du registre obligatoirement via
+`run_experiment`. Valider d'abord uniquement sur données synthétiques ; exécuter
+une seule fois depuis un commit propre. Les probabilités et métriques de la
+cumulative et du Dirichlet doivent être exactement égales ; les métriques
+probabilistes de l'uniforme et de l'aléatoire contraint doivent être exactement
+égales. Les artefacts doivent être reproductibles et ne contenir ni horodatage
+courant ni durée instable. Après publication, une erreur de registre conserve
+les artefacts pour inspection. Une réservation durable créée avant la commande
+consomme l'ID jusqu'au `fsync` d'une ligne registre ; tout résidu exige un
+diagnostic manuel. L'identité du staging publié est vérifiée sous les verrous
+registre et parent juste avant l'append succès, jamais après celui-ci.
+Le runner officiel est Linux/POSIX-only et requiert `fcntl`, `O_DIRECTORY`,
+`O_NOFOLLOW` et `renameat2(RENAME_NOREPLACE)` sur le système de fichiers. Il
+échoue fermé avant succès si une capacité manque, sans fallback non sûr. Avant
+l'exécution officielle, mesurer séparément la capacité, sans portée scientifique
+et sans aucune archive ou écriture de production, avec :
+
+    uv run --frozen --no-sync python -m loto.evaluation.archive_capacity_preflight
+
+Ce preflight synthétique exécute les dix candidats sur 2 811 observations et
+rapporte durées, prédictions et `ru_maxrss` Linux. Sans option de traçage, la
+décision repose sur les plafonds préenregistrés de 20 minutes et 1,5 GiB RSS,
+précisément pour éviter l'overhead de `tracemalloc`. Un pic `python_peak_mib` et
+son plafond de 512 MiB ne sont ajoutés au verdict que lorsque
+`--trace-python-memory` est explicitement activé.
+
 ### Tâche 2.4 — Contrôles négatifs
 
 - labels permutés ;

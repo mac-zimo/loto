@@ -57,7 +57,7 @@ def resolve_commit(root: Path, override: str | None = None) -> str:
 
 
 def ensure_clean_worktree(root: Path, registry_path: Path) -> None:
-    """Reject tracked or untracked changes, except the exact output registry."""
+    """Reject changes except the registry and its internal reservation journal."""
     arguments = ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."]
     try:
         registry_relative = registry_path.resolve().relative_to(root)
@@ -65,6 +65,10 @@ def ensure_clean_worktree(root: Path, registry_path: Path) -> None:
         pass
     else:
         arguments.append(f":(exclude,literal){registry_relative.as_posix()}")
+        reservations = registry_relative.with_name(
+            f"{registry_relative.name}.reservations"
+        )
+        arguments.append(f":(exclude,literal){reservations.as_posix()}")
 
     if _git(root, *arguments):
         raise RuntimeError(

@@ -99,3 +99,64 @@ régénérer les livrables versionnés avec tous les paramètres par défaut :
 La commande écrit dans `artifacts/task-1.3-power/` le CSV des courbes, le JSON
 qui l'accompagne (seed, alphas, seuils, répétitions, correction, cible,
 définitions statistiques) et la courbe PNG pour 2 811 tirages.
+
+## Première comparaison réelle préenregistrée (tâche 2.3a)
+
+Le runner officiel est exclusivement Linux/POSIX. Il exige `fcntl`,
+`O_DIRECTORY`, `O_NOFOLLOW` et un système de fichiers prenant en charge
+`renameat2(RENAME_NOREPLACE)`. Toute capacité absente provoque un échec fermé
+avant une décision succès ; aucun fallback non sûr n'est utilisé.
+
+Après revue et commit des sources, depuis un arbre Git propre dont le registre
+ne contient pas encore l'ID préenregistré :
+
+    uv run --frozen --no-sync python -m loto.evaluation.archive_experiment \
+        --commit "$(git rev-parse HEAD)"
+
+Cette commande est l'unique exécution officielle prévue. Elle lit directement,
+sans SQLite, les quatre CSV canoniques de la racine. L'apprentissage initial
+utilise les tirages antérieurs au 2014-01-01 ; le walk-forward expansif évalue
+chaque tirage des années calendaires 2014 à 2025 avec réentraînement à chaque
+tirage. L'année partielle 2026 est explicitement exclue et demeure un holdout
+futur intact.
+
+La commande refuse un arbre sale, un commit différent de `HEAD`, un ID déjà
+enregistré, des données divergentes ou un artefact existant. Elle écrit sans
+écrasement `preregistration.json`, `metrics.csv` et `result.json` sous
+`artifacts/task-2.3a-archive-walk-forward/`, puis référence ces chemins relatifs
+dans `experiments/registry.csv` via `run_experiment`. Les résultats constituent
+uniquement un screening descriptif : aucun succès de screening ne promeut un
+modèle sans significativité sur plusieurs périodes et confirmation ultérieure
+sur le holdout resté intact.
+
+Les trois fichiers sont préparés dans un répertoire caché voisin, puis publiés
+ensemble par renommage atomique. Un staging résiduel après arrêt brutal bloque
+explicitement une nouvelle exécution afin de permettre son inspection. Si
+`run_experiment` échoue après publication, le répertoire publié par cette
+tentative est conservé. Avant l'exécution, l'ID est durablement réservé sous
+`experiments/registry.csv.reservations/`; la réservation n'est supprimée qu'après
+le `fsync` d'une ligne succès ou erreur. Une réservation résiduelle consomme donc
+l'ID et impose une inspection manuelle, sans relance ni nettoyage automatique.
+L'identité et les hashes du staging sont authentifiés sous les verrous registre
+et parent immédiatement avant l'écriture d'une décision succès.
+
+Avant cette exécution irréversible, le preflight de capacité synthétique et non
+scientifique exécute les dix candidats sur 2 811 observations déterministes,
+sans archive FDJ, SQLite, registre, réseau ni écriture d'artefact :
+
+    uv run --frozen --no-sync python -m loto.evaluation.archive_capacity_preflight
+
+Il journalise sur stderr, avant et après chaque candidat, son ID, sa durée, son
+nombre de prédictions et le `ru_maxrss` Linux, puis écrit le rapport JSON final
+sur stdout. Les plafonds fixés avant mesure restent 20 minutes et 1,5 GiB de
+`ru_maxrss` pour le processus complet. `tracemalloc` est désactivé par défaut :
+son overhead important, notamment pendant les fits scikit-learn, rend la durée
+non représentative de l'expérience officielle. Le mode diagnostique explicite
+`--trace-python-memory` ajoute le plafond de 512 MiB au verdict, mais n'est ni
+requis ni approprié pour la décision temporelle complète à 2 811 tirages. Un
+candidat figé peut être isolé avec `--candidate ID` (option répétable). Le test
+long associé, exclu par défaut, se lance explicitement par :
+
+    LOTO_RUN_CAPACITY=1 uv run --frozen --no-sync pytest -q \
+        tests/evaluation/test_archive_capacity_preflight.py \
+        -m integration_capacity

@@ -39,4 +39,6 @@ testpaths = ["tests"]
 addopts = "--strict-markers"
 markers = [
     "integration: validates the complete read-only FDJ archive set",
+    "integration_capacity: runs the non-scientific synthetic capacity preflight",
+    "slow: intentionally long-running test excluded unless explicitly selected",
 ]

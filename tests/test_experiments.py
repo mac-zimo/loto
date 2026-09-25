@@ -1,12 +1,14 @@
 import csv
 import hashlib
 import json
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
+import loto.experiments as experiments
 from loto.experiments import (
     REGISTRY_COLUMNS,
     ExperimentConfig,
@@ -19,9 +21,9 @@ from loto.experiments import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def config() -> ExperimentConfig:
+def config(identifier: str = "EXP-001") -> ExperimentConfig:
     return ExperimentConfig(
-        id="EXP-001",
+        id=identifier,
         hypothesis="Les fréquences battent l'uniforme.",
         split="train:2020-2023/test:2024",
         features="fréquences cumulées",
@@ -94,6 +96,308 @@ def test_append_experiment_writes_exact_columns_and_rejects_duplicate_id(
 
     with registry.open(encoding="utf-8", newline="") as handle:
         assert len(list(csv.DictReader(handle))) == 1
+
+
+def _reservation_path(registry: Path, identifier: str) -> Path:
+    digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()
+    return registry.with_name(f"{registry.name}.reservations") / f"{digest}.json"
+
+
+def test_write_failure_after_command_leaves_reservation_and_prevents_replay(
+    tmp_path, clean_git_repo, monkeypatch
+):
+    registry = tmp_path / "registry.csv"
+    data = tmp_path / "draws.csv"
+    data.write_text("input", encoding="utf-8")
+    published = tmp_path / "published"
+    commands = 0
+
+    def command():
+        nonlocal commands
+        commands += 1
+        published.mkdir()
+        return ExperimentOutcome("result", "retenue")
+
+    monkeypatch.setattr(
+        experiments,
+        "_write_row",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("injected write failure")),
+    )
+
+    with pytest.raises(OSError, match="injected write failure"):
+        run_experiment(
+            config(), command, data_paths=[data], registry_path=registry,
+            repo_path=clean_git_repo,
+        )
+
+    reservation = _reservation_path(registry, "EXP-001")
+    assert reservation.is_file()
+    payload = json.loads(reservation.read_text(encoding="utf-8"))
+    assert payload["id"] == "EXP-001"
+    assert payload["commit"]
+    assert payload["manifest"] == json.loads(build_data_manifest([data]))
+
+    with pytest.raises(ValueError, match="EXP-001.*réserv"):
+        run_experiment(
+            config(), command, data_paths=[data], registry_path=registry,
+            repo_path=clean_git_repo,
+        )
+    assert commands == 1
+
+
+def test_partial_registry_write_leaves_reservation_and_prevents_replay(
+    tmp_path, clean_git_repo, monkeypatch
+):
+    registry = tmp_path / "registry.csv"
+    data = tmp_path / "draws.csv"
+    data.write_text("input", encoding="utf-8")
+    commands = 0
+
+    def command():
+        nonlocal commands
+        commands += 1
+        return ExperimentOutcome("result", "retenue")
+
+    def partial_write(handle, row):
+        handle.seek(0, os.SEEK_END)
+        handle.write("EXP-001,partial")
+        handle.flush()
+        os.fsync(handle.fileno())
+        raise OSError("injected partial write")
+
+    monkeypatch.setattr(experiments, "_write_row", partial_write)
+    with pytest.raises(OSError, match="partial write"):
+        run_experiment(
+            config(), command, data_paths=[data], registry_path=registry,
+            repo_path=clean_git_repo,
+        )
+
+    assert _reservation_path(registry, "EXP-001").is_file()
+    with pytest.raises(ValueError):
+        run_experiment(
+            config(), command, data_paths=[data], registry_path=registry,
+            repo_path=clean_git_repo,
+        )
+    assert commands == 1
+
+
+def test_registry_failure_does_not_mask_primary_command_error(
+    tmp_path, clean_git_repo, monkeypatch
+):
+    registry = tmp_path / "registry.csv"
+    data = tmp_path / "draws.csv"
+    data.write_text("input", encoding="utf-8")
+    monkeypatch.setattr(
+        experiments,
+        "_write_row",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("registry unavailable")),
+    )
+
+    with pytest.raises(RuntimeError, match="primary failure") as raised:
+        run_experiment(
+            config(),
+            lambda: (_ for _ in ()).throw(RuntimeError("primary failure")),
+            data_paths=[data],
+            registry_path=registry,
+            repo_path=clean_git_repo,
+        )
+
+    assert _reservation_path(registry, "EXP-001").is_file()
+    assert any(
+        "Aucune ligne d'erreur durable n'a pu être confirmée" in note
+        and "réservation durable" in note
+        for note in raised.value.__notes__
+    )
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_durable_row_removes_reservation_and_csv_consumes_id(
+    tmp_path, clean_git_repo, fails
+):
+    registry = tmp_path / "registry.csv"
+    data = tmp_path / "draws.csv"
+    data.write_text("input", encoding="utf-8")
+
+    def command():
+        if fails:
+            raise RuntimeError("boom")
+        return ExperimentOutcome("result", "retenue")
+
+    if fails:
+        with pytest.raises(RuntimeError, match="boom"):
+            run_experiment(
+                config(), command, data_paths=[data], registry_path=registry,
+                repo_path=clean_git_repo,
+            )
+    else:
+        run_experiment(
+            config(), command, data_paths=[data], registry_path=registry,
+            repo_path=clean_git_repo,
+        )
+
+    assert not _reservation_path(registry, "EXP-001").exists()
+    with registry.open(encoding="utf-8", newline="") as handle:
+        assert [row["id"] for row in csv.DictReader(handle)] == ["EXP-001"]
+
+
+def test_success_cleanup_failure_is_non_fatal_and_leaves_inspectable_reservation(
+    tmp_path, clean_git_repo, monkeypatch
+):
+    registry = tmp_path / "registry.csv"
+    data = tmp_path / "draws.csv"
+    data.write_text("input", encoding="utf-8")
+    expected = ExperimentOutcome("result", "retenue")
+    commands = 0
+
+    def command():
+        nonlocal commands
+        commands += 1
+        return expected
+
+    def fail_cleanup(reservation):
+        raise OSError(f"injected cleanup failure for {reservation}")
+
+    monkeypatch.setattr(experiments, "_remove_reservation", fail_cleanup)
+
+    with pytest.warns(
+        RuntimeWarning,
+        match="success row durable; residual reservation requires inspection",
+    ) as captured:
+        outcome = run_experiment(
+            config(), command, data_paths=[data], registry_path=registry,
+            repo_path=clean_git_repo,
+        )
+
+    reservation = _reservation_path(registry, "EXP-001")
+    assert outcome is expected
+    assert reservation.is_file()
+    assert str(reservation) in str(captured[0].message)
+    with registry.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 1
+    assert rows[0]["id"] == "EXP-001"
+    assert rows[0]["décision"] == "retenue"
+
+    with pytest.raises(ValueError, match="EXP-001.*existe déjà"):
+        run_experiment(
+            config(), command, data_paths=[data], registry_path=registry,
+            repo_path=clean_git_repo,
+        )
+    assert commands == 1
+
+
+def test_success_cleanup_normally_removes_reservation_without_warning(
+    tmp_path, clean_git_repo, recwarn
+):
+    registry = tmp_path / "registry.csv"
+    data = tmp_path / "draws.csv"
+    data.write_text("input", encoding="utf-8")
+
+    outcome = run_experiment(
+        config(),
+        lambda: ExperimentOutcome("result", "retenue"),
+        data_paths=[data],
+        registry_path=registry,
+        repo_path=clean_git_repo,
+    )
+
+    assert outcome.result == "result"
+    assert not recwarn
+    assert not _reservation_path(registry, "EXP-001").exists()
+
+
+def test_reservations_are_per_id_and_invalid_content_fails_closed(
+    tmp_path, clean_git_repo
+):
+    registry = tmp_path / "registry.csv"
+    data = tmp_path / "draws.csv"
+    data.write_text("input", encoding="utf-8")
+    first = _reservation_path(registry, "EXP-A")
+    first.parent.mkdir()
+    first.write_text("not-json", encoding="utf-8")
+    started = False
+
+    def command():
+        nonlocal started
+        started = True
+        return ExperimentOutcome("result", "retenue")
+
+    with pytest.raises(RuntimeError, match="réservation.*invalide"):
+        run_experiment(
+            config("EXP-A"), command, data_paths=[data], registry_path=registry,
+            repo_path=clean_git_repo,
+        )
+    assert not started
+
+    outcome = run_experiment(
+        config("EXP-B"), command, data_paths=[data], registry_path=registry,
+        repo_path=clean_git_repo,
+    )
+    assert outcome.result == "result"
+    assert first.read_text(encoding="utf-8") == "not-json"
+
+
+def test_validate_before_record_controls_success_commit(
+    tmp_path, clean_git_repo
+):
+    registry = tmp_path / "registry.csv"
+    data = tmp_path / "draws.csv"
+    data.write_text("input", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="publication substituted"):
+        run_experiment(
+            config(),
+            lambda: ExperimentOutcome("result", "retenue"),
+            data_paths=[data],
+            registry_path=registry,
+            repo_path=clean_git_repo,
+            validate_before_record=lambda outcome: (_ for _ in ()).throw(
+                RuntimeError("publication substituted")
+            ),
+        )
+
+    with registry.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 1
+    assert rows[0]["décision"] == "erreur"
+    assert "publication substituted" in rows[0]["résultat"]
+    assert not _reservation_path(registry, "EXP-001").exists()
+
+
+def test_no_fallible_validation_occurs_after_success_row(
+    tmp_path, clean_git_repo, monkeypatch
+):
+    registry = tmp_path / "registry.csv"
+    data = tmp_path / "draws.csv"
+    data.write_text("input", encoding="utf-8")
+    events = []
+    substituted = False
+    real_write_row = experiments._write_row
+
+    def validate(outcome):
+        if substituted:
+            raise RuntimeError("post-record validation must not run")
+        events.append("validate")
+
+    def write_row(handle, row):
+        nonlocal substituted
+        real_write_row(handle, row)
+        substituted = True
+        events.append("success-row")
+
+    monkeypatch.setattr(experiments, "_write_row", write_row)
+    outcome = run_experiment(
+        config(),
+        lambda: ExperimentOutcome("result", "retenue"),
+        data_paths=[data],
+        registry_path=registry,
+        repo_path=clean_git_repo,
+        validate_before_record=validate,
+    )
+
+    assert outcome.result == "result"
+    assert substituted
+    assert events == ["validate", "success-row"]
 
 
 def test_append_experiment_separates_row_after_missing_final_newline(

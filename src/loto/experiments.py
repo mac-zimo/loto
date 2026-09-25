@@ -7,6 +7,8 @@ import fcntl
 import hashlib
 import json
 import os
+import stat
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar
@@ -155,6 +157,139 @@ def _read_ids(handle, registry_path: Path) -> set[str]:
 def _ensure_identifier_available(handle, registry_path: Path, identifier: str) -> None:
     if identifier in _read_ids(handle, registry_path):
         raise ValueError(f"L'expérience {identifier} existe déjà; le registre est immuable")
+    reservation = _reservation_path(registry_path, identifier)
+    if not os.path.lexists(reservation):
+        return
+    try:
+        descriptor = os.open(reservation, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            reservation_stat = os.fstat(descriptor)
+            contents = b""
+            while chunk := os.read(descriptor, 64 * 1024):
+                contents += chunk
+        finally:
+            os.close(descriptor)
+        payload = json.loads(contents)
+        if (
+            not stat.S_ISREG(reservation_stat.st_mode)
+            or not isinstance(payload, dict)
+            or set(payload) != {"commit", "id", "manifest"}
+            or payload.get("id") != identifier
+            or not isinstance(payload.get("commit"), str)
+            or len(payload["commit"]) not in (40, 64)
+            or any(character not in "0123456789abcdef" for character in payload["commit"])
+            or not _valid_reservation_manifest(payload.get("manifest"))
+            or contents != _canonical_reservation_bytes(payload)
+        ):
+            raise ValueError
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+        raise RuntimeError(
+            f"Journal de réservation durable invalide pour l'expérience "
+            f"{identifier}: {reservation}"
+        ) from error
+    raise ValueError(
+        f"L'expérience {identifier} est déjà réservée; le registre est immuable"
+    )
+
+
+def _reservation_directory(registry_path: Path) -> Path:
+    return registry_path.with_name(f"{registry_path.name}.reservations")
+
+
+def _reservation_path(registry_path: Path, identifier: str) -> Path:
+    digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()
+    return _reservation_directory(registry_path) / f"{digest}.json"
+
+
+def _canonical_reservation_bytes(payload: dict[str, object]) -> bytes:
+    return json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+
+
+def _valid_reservation_manifest(manifest: object) -> bool:
+    if not isinstance(manifest, dict) or set(manifest) != {"files", "sha256"}:
+        return False
+    dataset_hash = manifest.get("sha256")
+    files = manifest.get("files")
+    if (
+        not isinstance(dataset_hash, str)
+        or len(dataset_hash) != 64
+        or any(character not in "0123456789abcdef" for character in dataset_hash)
+        or not isinstance(files, list)
+        or not files
+    ):
+        return False
+    return all(
+        isinstance(item, dict)
+        and set(item) == {"path", "sha256"}
+        and isinstance(item.get("path"), str)
+        and bool(item["path"])
+        and isinstance(item.get("sha256"), str)
+        and len(item["sha256"]) == 64
+        and all(character in "0123456789abcdef" for character in item["sha256"])
+        for item in files
+    )
+
+
+def _fsync_directory(directory: Path) -> None:
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _create_reservation(
+    registry_path: Path, identifier: str, commit: str, manifest: str
+) -> Path:
+    directory = _reservation_directory(registry_path)
+    try:
+        directory.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    else:
+        _fsync_directory(directory.parent)
+
+    payload = {
+        "commit": commit,
+        "id": identifier,
+        "manifest": json.loads(manifest),
+    }
+    contents = _canonical_reservation_bytes(payload)
+    reservation = _reservation_path(registry_path, identifier)
+    directory_descriptor = os.open(
+        directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    )
+    try:
+        descriptor = os.open(
+            reservation.name,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_descriptor,
+        )
+        try:
+            position = 0
+            while position < len(contents):
+                position += os.write(descriptor, contents[position:])
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.fsync(directory_descriptor)
+    finally:
+        os.close(directory_descriptor)
+    return reservation
+
+
+def _remove_reservation(reservation: Path) -> None:
+    directory_descriptor = os.open(
+        reservation.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    )
+    try:
+        os.unlink(reservation.name, dir_fd=directory_descriptor)
+        os.fsync(directory_descriptor)
+    finally:
+        os.close(directory_descriptor)
 
 
 def _write_row(handle, row: dict[str, str]) -> None:
@@ -247,11 +382,10 @@ def run_experiment(
     registry_path: str | Path = DEFAULT_REGISTRY_PATH,
     commit: str | None = None,
     repo_path: str | Path | None = None,
+    validate_before_record: Callable[[T], None] | None = None,
 ) -> T:
-    """Run a command and immutably record success or failure with frozen inputs."""
+    """Run and validate a command before its durable success decision is recorded."""
     _validate_config(config)
-    data_paths = tuple(data_paths)
-    manifest = build_data_manifest(data_paths)
     root = resolve_repo_root(repo_path)
     commit_hash = resolve_commit(root, commit)
     if commit is not None and commit_hash != resolve_commit(root):
@@ -262,6 +396,11 @@ def run_experiment(
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         _ensure_identifier_available(handle, registry, config.id)
         ensure_clean_worktree(root, registry)
+        data_paths = tuple(data_paths)
+        manifest = build_data_manifest(data_paths)
+        reservation = _create_reservation(
+            registry, config.id, commit_hash, manifest
+        )
         try:
             outcome = command()
             _validate_outcome(outcome)
@@ -275,15 +414,48 @@ def run_experiment(
                 raise RuntimeError(
                     "Les données ont changé pendant l'expérience; succès refusé"
                 )
+            if validate_before_record is not None:
+                validate_before_record(outcome)
             success_row = _row(
                 config, outcome, data_manifest=manifest, commit=commit_hash
             )
         except BaseException as error:
             failure = ExperimentOutcome(f"{type(error).__name__}: {error}", "erreur")
-            _write_row(
-                handle,
-                _row(config, failure, data_manifest=manifest, commit=commit_hash),
+            try:
+                _write_row(
+                    handle,
+                    _row(config, failure, data_manifest=manifest, commit=commit_hash),
+                )
+            except BaseException as recording_error:
+                error.add_note(
+                    "Aucune ligne d'erreur durable n'a pu être confirmée; "
+                    f"l'ID reste consommé par la réservation durable {reservation}. "
+                    f"Échec d'écriture du registre: {recording_error!r}"
+                )
+            else:
+                try:
+                    _remove_reservation(reservation)
+                except BaseException as cleanup_error:
+                    error.add_note(
+                        "La ligne d'erreur est durable; le nettoyage de la réservation "
+                        f"a échoué et nécessite une inspection: {cleanup_error!r}"
+                    )
+            raise
+        try:
+            _write_row(handle, success_row)
+        except BaseException as error:
+            error.add_note(
+                "La ligne succès n'a pas pu être confirmée; l'ID reste consommé par "
+                f"la réservation durable {reservation} et le registre peut être partiel."
             )
             raise
-        _write_row(handle, success_row)
+        try:
+            _remove_reservation(reservation)
+        except BaseException as cleanup_error:
+            warnings.warn(
+                f"{reservation}: success row durable; residual reservation requires "
+                f"inspection ({cleanup_error!r})",
+                RuntimeWarning,
+                stacklevel=2,
+            )
     return outcome

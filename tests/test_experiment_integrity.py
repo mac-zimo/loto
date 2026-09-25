@@ -5,6 +5,7 @@ from typing import Any, cast
 
 import pytest
 
+import loto.experiments as experiments
 from loto.experiments import (
     REGISTRY_COLUMNS,
     ExperimentConfig,
@@ -99,6 +100,78 @@ def test_dirty_or_untracked_repository_is_rejected_before_command(
         _run(tmp_path, clean_git_repo, command)
 
     assert not started
+
+
+@pytest.mark.parametrize("dirty_kind", ["tracked", "untracked"])
+def test_dirty_repository_is_rejected_without_accessing_data(
+    tmp_path, clean_git_repo, monkeypatch, dirty_kind
+):
+    target = clean_git_repo / ("tracked.txt" if dirty_kind == "tracked" else "new.py")
+    target.write_text("dirty\n", encoding="utf-8")
+    accesses = 0
+
+    def forbidden_manifest(paths):
+        nonlocal accesses
+        accesses += 1
+        raise AssertionError("data accessed before cleanliness guard")
+
+    monkeypatch.setattr(experiments, "build_data_manifest", forbidden_manifest)
+
+    with pytest.raises(RuntimeError, match="modifications ou fichiers non suivis"):
+        _run(
+            tmp_path,
+            clean_git_repo,
+            lambda: ExperimentOutcome("résultat", "retenue"),
+        )
+
+    assert accesses == 0
+
+
+def test_wrong_commit_is_rejected_without_accessing_data(
+    tmp_path, clean_git_repo, monkeypatch
+):
+    accesses = 0
+
+    def forbidden_manifest(paths):
+        nonlocal accesses
+        accesses += 1
+        raise AssertionError("data accessed before commit guard")
+
+    monkeypatch.setattr(experiments, "build_data_manifest", forbidden_manifest)
+
+    with pytest.raises(ValueError, match="commit"):
+        _run(
+            tmp_path,
+            clean_git_repo,
+            lambda: ExperimentOutcome("résultat", "retenue"),
+            commit="0" * 40,
+        )
+
+    assert accesses == 0
+
+
+def test_clean_run_builds_manifest_before_and_after_command(
+    tmp_path, clean_git_repo, monkeypatch
+):
+    real_build_manifest = experiments.build_data_manifest
+    manifests = []
+
+    def recording_manifest(paths):
+        manifest = real_build_manifest(paths)
+        manifests.append(manifest)
+        return manifest
+
+    monkeypatch.setattr(experiments, "build_data_manifest", recording_manifest)
+
+    outcome = _run(
+        tmp_path,
+        clean_git_repo,
+        lambda: ExperimentOutcome("résultat", "retenue"),
+    )
+
+    assert outcome.result == "résultat"
+    assert len(manifests) == 2
+    assert manifests[0] == manifests[1]
 
 
 def test_registry_itself_is_exempt_from_cleanliness_check(tmp_path, clean_git_repo):

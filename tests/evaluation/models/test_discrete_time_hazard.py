@@ -7,6 +7,7 @@ from datetime import date, timedelta
 import inspect
 import math
 from pathlib import Path
+import pickle
 import sqlite3
 
 import numpy as np
@@ -420,7 +421,7 @@ def test_predict_revalidates_forged_state_and_projection(monkeypatch):
         _predict(model, history, state)
 
 
-def test_predict_rejects_counts_moved_between_bins_despite_coherent_derived_fields():
+def test_predict_rejects_exact_fitted_state_mutated_with_coherent_derived_fields():
     history = _draws(60)
     model = DiscreteTimeHazardModel(DiscreteTimeHazardConfig())
     state = _fit(model, history)
@@ -449,13 +450,31 @@ def test_predict_rejects_counts_moved_between_bins_despite_coherent_derived_fiel
             forged_exposures, state.event_counts, strict=True
         )
     )
-    forged = deepcopy(state)
-    object.__setattr__(forged, "exposure_counts", forged_exposures)
-    object.__setattr__(forged, "hazards", forged_hazards)
+    object.__setattr__(state, "exposure_counts", forged_exposures)
+    object.__setattr__(state, "hazards", forged_hazards)
 
-    assert replace(state) == state
     with pytest.raises(ValueError, match="provenance"):
-        _predict(model, history, forged)
+        _predict(model, history, state)
+
+
+def test_fitted_model_pickle_deepcopy_and_healthy_predictions_are_stable():
+    history = _draws(60)
+    model = DiscreteTimeHazardModel(DiscreteTimeHazardConfig())
+    state = _fit(model, history)
+    expected = model.predict_details(history, state, rng=np.random.default_rng(12))
+
+    restored = pickle.loads(pickle.dumps(model))
+    copied = deepcopy(model)
+
+    assert restored.predict_details(
+        history, state, rng=np.random.default_rng(13)
+    ) == expected
+    assert copied.predict_details(
+        history, state, rng=np.random.default_rng(14)
+    ) == expected
+    assert model.predict_details(
+        history, state, rng=np.random.default_rng(15)
+    ) == expected
 
 
 def test_prediction_provenance_future_overlap_eviction_and_reused_identity():

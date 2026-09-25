@@ -17,7 +17,7 @@ claim.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from datetime import date
 import math
 from numbers import Real
@@ -92,6 +92,8 @@ RIGHT_CENSOR_POLICY = (
 )
 NEVER_OBSERVED_POLICY = "reject fit if any number was never observed; no fallback"
 EMPTY_BIN_POLICY = "use the Beta prior alone when a class has no exposure"
+_FIT_VALIDATION_TOKEN = object()
+
 
 def _finite_probability(value: object, *, name: str) -> float:
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real):
@@ -418,12 +420,18 @@ class DiscreteTimeHazardState:
     fitted_through_original_index: int
     fitted_through_date: date
     training_provenance: tuple[ObservationFingerprint, ...]
+    _fit_validation_token: InitVar[object | None] = None
 
-    def __post_init__(self) -> None:
-        _validate_state(self)
+    def __post_init__(self, _fit_validation_token: object | None) -> None:
+        _validate_state(
+            self,
+            recount_training_history=_fit_validation_token is not _FIT_VALIDATION_TOKEN,
+        )
 
 
-def _validate_state(state: DiscreteTimeHazardState) -> None:
+def _validate_state(
+    state: DiscreteTimeHazardState, *, recount_training_history: bool = True
+) -> None:
     if not isinstance(state.config_identifier, str) or not state.config_identifier:
         raise ValueError("state config_identifier must be non-empty")
     bounds = _validate_age_bins(state.age_bin_lower_bounds)
@@ -508,23 +516,26 @@ def _validate_state(state: DiscreteTimeHazardState) -> None:
         fitted_through_date=state.fitted_through_date,
         fitted_through_original_index=state.fitted_through_original_index,
     )
-    training_history: History = tuple(
-        DrawObservation(draw_date, original_index, numbers)
-        for draw_date, original_index, numbers in provenance
-    )
-    expected_exposures, expected_events, expected_first_positions = (
-        _hazard_observation_counts(training_history, bounds)
-    )
-    if exposures != expected_exposures:
-        raise ValueError(
-            "state exposure_counts are inconsistent with training provenance"
+    if recount_training_history:
+        training_history: History = tuple(
+            DrawObservation(draw_date, original_index, numbers)
+            for draw_date, original_index, numbers in provenance
         )
-    if events != expected_events:
-        raise ValueError("state event_counts are inconsistent with training provenance")
-    if first_positions != expected_first_positions:
-        raise ValueError(
-            "state first_observation_positions are inconsistent with training provenance"
+        expected_exposures, expected_events, expected_first_positions = (
+            _hazard_observation_counts(training_history, bounds)
         )
+        if exposures != expected_exposures:
+            raise ValueError(
+                "state exposure_counts are inconsistent with training provenance"
+            )
+        if events != expected_events:
+            raise ValueError(
+                "state event_counts are inconsistent with training provenance"
+            )
+        if first_positions != expected_first_positions:
+            raise ValueError(
+                "state first_observation_positions are inconsistent with training provenance"
+            )
     if type(state.first_observation_fingerprints) is not tuple:
         raise TypeError(
             "state first_observation_fingerprints must be an immutable tuple"
@@ -694,6 +705,7 @@ class DiscreteTimeHazardModel:
             fitted_through_original_index=checked[-1].original_index,
             fitted_through_date=checked[-1].draw_date,
             training_provenance=provenance,
+            _fit_validation_token=_FIT_VALIDATION_TOKEN,
         )
 
     def predict_details(

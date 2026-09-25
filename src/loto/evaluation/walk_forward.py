@@ -398,6 +398,8 @@ def run_walk_forward(
     windows: Sequence[EvaluationWindow],
     callbacks: WalkForwardCallbacks,
     config: WalkForwardConfig,
+    *,
+    retain_history: bool = True,
 ) -> tuple[PredictionRecord, ...]:
     """Evaluate predictions in order while controlling every callback history."""
 
@@ -406,9 +408,13 @@ def run_walk_forward(
         raise TypeError("callbacks must be WalkForwardCallbacks")
     if not isinstance(config, WalkForwardConfig):
         raise TypeError("config must be WalkForwardConfig")
+    if not isinstance(retain_history, bool):
+        raise TypeError("retain_history must be a boolean")
     checked_windows = _validate_windows(
         windows, len(observations), config.initial_train_size
     )
+    observation_dates = tuple(draw.draw_date for draw in observations)
+    observation_indices = tuple(draw.original_index for draw in observations)
 
     records = []
     for window_index, window in enumerate(checked_windows):
@@ -424,9 +430,9 @@ def run_walk_forward(
                     history_start, target_position - window.max_train_size
                 )
             history: History = observations[history_start:target_position]
-            history_original_indices = tuple(
-                draw.original_index for draw in history
-            )
+            history_original_indices = observation_indices[
+                history_start:target_position
+            ]
             retrained = _should_retrain(config, offset)
             if retrained:
                 fit_features = None
@@ -489,8 +495,14 @@ def run_walk_forward(
                     target_numbers=target.numbers,
                     probabilities=probabilities,
                     selected_numbers=selected_numbers,
-                    history_dates=tuple(draw.draw_date for draw in history),
-                    history_original_indices=history_original_indices,
+                    history_dates=(
+                        observation_dates[history_start:target_position]
+                        if retain_history
+                        else ()
+                    ),
+                    history_original_indices=(
+                        history_original_indices if retain_history else ()
+                    ),
                     fitted_through_date=fitted_through_date,
                     fitted_through_original_index=fitted_through,
                     window_index=window_index,
