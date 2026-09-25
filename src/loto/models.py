@@ -14,8 +14,8 @@ from collections import Counter, defaultdict
 from sklearn.preprocessing import LabelEncoder
 from sklearn.neighbors import NearestNeighbors
 from sklearn.cluster import KMeans
-from scipy.stats import chi2_contingency
-from src.loto.config import NUM_BALLS, MAX_BALL, NUM_CHANCE_MAX
+from loto.model_significance import correlation_test_significance
+from loto.config import NUM_BALLS, MAX_BALL, NUM_CHANCE_MAX
 
 
 class MarkovChainAnalyzer:
@@ -228,46 +228,6 @@ class AnomalyDetector:
         return pd.DataFrame(anomalies)
 
 
-def correlation_test_significance(df: pd.DataFrame, top_n: int = 50) -> list[dict]:
-    """
-    Teste la significativité statistique des paires les plus fréquentes.
-    Utilise le test du Chi-deux.
-    """
-    from src.loto.analysis import pair_cooccurrence
-
-    pair_matrix = pair_cooccurrence(df)
-    total_draws = len(df)
-
-    # Trier les paires par co-occurrence
-    pair_counts = []
-    for i in range(MAX_BALL):
-        for j in range(i + 1, MAX_BALL):
-            count = int(pair_matrix.iloc[i][j])
-            if count > 0:
-                pair_counts.append(((i + 1, j + 1), count))
-
-    pair_counts.sort(key=lambda x: x[1], reverse=True)
-
-    results = []
-    expected_count = total_draws * (NUM_BALLS / MAX_BALL) ** 2 * 2  # ~co-occurrence attendue
-
-    for (a, b), observed in pair_counts[:top_n]:
-        # Chi-deux test: observed vs expected
-        chi2, p_value, _, _ = chi2_contingency([[observed, total_draws - observed],
-                                                 [expected_count, total_draws - expected_count]])
-        if p_value < 0.05:  # significatif
-            results.append({
-                "pair": (a, b),
-                "observed": observed,
-                "expected": round(expected_count, 2),
-                "chi2": round(chi2, 4),
-                "p_value": round(p_value, 6),
-                "significant": p_value < 0.01,  # strongly significant
-            })
-
-    return results[:20]
-
-
 def run_modeling(df: pd.DataFrame) -> dict:
     """Run all modeling and returns structured results."""
     result = {}
@@ -305,7 +265,7 @@ def run_modeling(df: pd.DataFrame) -> dict:
 if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.INFO)
-    from src.loto.analysis import get_dataframe
+    from loto.analysis import get_dataframe
     df = get_dataframe()
     results = run_modeling(df)
     print(f"Markov predictions: {results.get('markov_predictions', [])[:5]}")

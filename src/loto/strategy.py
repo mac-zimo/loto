@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 from collections import Counter
 from itertools import combinations
-from src.loto.config import (
+from loto.config import (
     NUM_BALLS, MAX_BALL, NUM_CHANCE_MAX,
     SIMULATION_ROUNDS, SIMULATION_SEED,
 )
@@ -237,116 +237,22 @@ class AllCombinationBacktestStrategy(BaseStrategy):
         return comb(n, k)
 
 
-def evaluate_strategy(strategy: BaseStrategy, df: pd.DataFrame, budget_per_draw: float = 2.0) -> dict:
-    """
-    Évalue la rentabilité d'une stratégie sur les données historiques.
+def evaluate_strategy(*args, **kwargs):
+    """Compatibility wrapper for the legacy evaluator."""
+    from loto.strategy_evaluation import evaluate_strategy as evaluate
 
-    Simule: à chaque tirage, on joue les numéros choisis par la stratégie,
-    puis on compare avec le vrai tirage.
-
-    Returns un dict avec les métriques de performance.
-    """
-    total_invested = 0
-    total_won = 0
-    wins_by_rank = Counter()
-    max_win = 0
-    win_dates = []
-    running_balance = []
-
-    n_draws = len(df)
-
-    for draw_idx in range(20, n_draws):  # skip first 20 as warmup
-        # Utiliser les tirages jusqu'ici pour choisir les numéros
-        train_df = df.iloc[:draw_idx]
-        combos = strategy.select_numbers(train_df)
-
-        # Coût du jeu (une combinaison = 2€)
-        cost = len(combos) * budget_per_draw
-        total_invested += cost
-
-        # Tirage réel de ce jour
-        current_row = df.iloc[draw_idx]
-        actual_balls = sorted([int(current_row[f"boule_{i}"]) for i in range(1, NUM_BALLS + 1) if pd.notna(current_row[f"boule_{i}"])])
-        actual_chance = int(current_row["numero_chance"])
-
-        # Vérifier chaque combinaison jouée
-        draw_won = 0
-        for combo in combos:
-            sorted_combo = sorted(combo[:NUM_BALLS])
-            matches = len(set(sorted_combo) & set(actual_balls))
-
-            if matches == NUM_BALLS and actual_chance == (combo[NUM_BALLS] if len(combo) > NUM_BALLS else None):
-                # Jackpot!
-                draw_won += 5000000  # estimation
-            elif matches == NUM_BALLS:
-                draw_won += 1000000  # Rang 2 estimé
-            elif matches >= 4:
-                draw_won += 150  # Rang 3+ estimé
-
-        wins_by_rank[str(matches)] += len(combos) if draw_won > 0 else 0
-        total_won += draw_won
-        max_win = max(max_win, draw_won)
-        if draw_won > 0:
-            win_dates.append(str(current_row.get("date_tirage", "")))
-
-        running_balance.append(total_won - total_invested)
-
-    roi = ((total_won - total_invested) / total_invested * 100) if total_invested > 0 else 0
-    net_profit = total_won - total_invested
-
-    return {
-        "strategy_name": strategy.name,
-        "total_invested": round(total_invested, 2),
-        "total_won": round(total_won, 2),
-        "net_profit": round(net_profit, 2),
-        "roi_pct": round(roi, 2),
-        "max_win": max_win,
-        "win_dates": win_dates[:10],
-        "final_balance": running_balance[-1] if running_balance else 0,
-        "draws_evaluated": n_draws - 20,
-    }
+    return evaluate(*args, **kwargs)
 
 
-def run_chance_evaluation(df: pd.DataFrame) -> list[dict]:
-    """Évalue les stratégies numéro de chance (méthodes alternatives)."""
-    from src.loto.chance_strategy import evaluate_chance_strategy
+def run_chance_evaluation(*args, **kwargs):
+    """Compatibility wrapper for legacy chance evaluation."""
+    from loto.strategy_evaluation import run_chance_evaluation as evaluate
 
-    results = []
-    for method in ["frequency", "day_conditional", "recent"]:
-        print(f"Évaluation chance '{method}'...")
-        result = evaluate_chance_strategy(df, method=method)
-        results.append(result)
-        print(f"  Stratégie ROI: {result['strategy']['roi_pct']}% | Baseline: {result['random_baseline']['roi_pct']}% | Amélioration: {result['improvement']}pp")
-
-    return results
+    return evaluate(*args, **kwargs)
 
 
-def run_strategy_backtest(df: pd.DataFrame) -> list[dict]:
-    """Évalue toutes les stratégies sur les données historiques."""
-    strategies = [
-        HotNumbersStrategy(window=100),
-        ColdNumbersStrategy(window=200),
-        PairedNumbersStrategy(n_combinations=3, window=200),
-        WeightedRandomStrategy(n_combinations=3, window=200, bias=1.5),
-        WeightedRandomStrategy(n_combinations=3, window=200, bias=3.0),
-    ]
+def run_strategy_backtest(*args, **kwargs):
+    """Compatibility wrapper for legacy strategy backtests."""
+    from loto.strategy_evaluation import run_strategy_backtest as evaluate
 
-    results = []
-    for strategy in strategies:
-        print(f"Évaluation de: {strategy.name}...")
-        result = evaluate_strategy(strategy, df)
-        results.append(result)
-        print(f"  ROI: {result['roi_pct']}%, Profit net: {result['net_profit']:.2f}€")
-
-    return results
-
-
-if __name__ == "__main__":
-    import logging
-    logging.basicConfig(level=logging.INFO)
-    from src.loto.analysis import get_dataframe
-    df = get_dataframe()
-    results = run_strategy_backtest(df)
-    for r in results:
-        print(f"\n{r['strategy_name']}:")
-        print(f"  ROI: {r['roi_pct']}% | Net: {r['net_profit']}€ | Max win: {r['max_win']}€")
+    return evaluate(*args, **kwargs)

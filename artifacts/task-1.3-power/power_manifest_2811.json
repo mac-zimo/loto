@@ -1,0 +1,188 @@
+{
+  "alpha": 0.05,
+  "bias_definition": "probability-point increase for inclusion of number 1; remaining values exchangeable; main draws remain 5-of-49 without replacement",
+  "confidence": 0.95,
+  "critical_values": {
+    "chance_marginal": 0.01711134827463537,
+    "main_marginal": 0.019624071613704178
+  },
+  "curves": {
+    "chance_marginal": [
+      {
+        "detectability": "insufficient_power",
+        "detections": 20,
+        "effect_size": 0.0,
+        "interval_high": 0.03069000522971778,
+        "interval_low": 0.01298368291641514,
+        "power": 0.02,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "insufficient_power",
+        "detections": 40,
+        "effect_size": 0.005,
+        "interval_high": 0.05400964412125795,
+        "interval_low": 0.029510973685452767,
+        "power": 0.04,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "insufficient_power",
+        "detections": 125,
+        "effect_size": 0.01,
+        "interval_high": 0.14694383822896162,
+        "interval_low": 0.10592623063520473,
+        "power": 0.125,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "insufficient_power",
+        "detections": 369,
+        "effect_size": 0.015,
+        "interval_high": 0.399355449564444,
+        "interval_low": 0.33964716115877136,
+        "power": 0.369,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "insufficient_power",
+        "detections": 660,
+        "effect_size": 0.02,
+        "interval_high": 0.6886981176948582,
+        "interval_low": 0.6300773195897643,
+        "power": 0.66,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "detectable",
+        "detections": 989,
+        "effect_size": 0.03,
+        "interval_high": 0.9938468259019133,
+        "interval_low": 0.9804106042992138,
+        "power": 0.989,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "detectable",
+        "detections": 1000,
+        "effect_size": 0.05,
+        "interval_high": 1.0,
+        "interval_low": 0.996173241514445,
+        "power": 1.0,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "detectable",
+        "detections": 1000,
+        "effect_size": 0.08,
+        "interval_high": 1.0,
+        "interval_low": 0.996173241514445,
+        "power": 1.0,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "detectable",
+        "detections": 1000,
+        "effect_size": 0.1,
+        "interval_high": 1.0,
+        "interval_low": 0.996173241514445,
+        "power": 1.0,
+        "repetitions": 1000
+      }
+    ],
+    "main_marginal": [
+      {
+        "detectability": "insufficient_power",
+        "detections": 26,
+        "effect_size": 0.0,
+        "interval_high": 0.03782382884268992,
+        "interval_low": 0.01780393820161633,
+        "power": 0.026,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "insufficient_power",
+        "detections": 34,
+        "effect_size": 0.005,
+        "interval_high": 0.04713519024531107,
+        "interval_low": 0.024431348663226316,
+        "power": 0.034,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "insufficient_power",
+        "detections": 79,
+        "effect_size": 0.01,
+        "interval_high": 0.09737491488400823,
+        "interval_low": 0.06384721576082919,
+        "power": 0.079,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "insufficient_power",
+        "detections": 250,
+        "effect_size": 0.015,
+        "interval_high": 0.27776028025908617,
+        "interval_low": 0.2241530989836914,
+        "power": 0.25,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "insufficient_power",
+        "detections": 520,
+        "effect_size": 0.02,
+        "interval_high": 0.5508292050030588,
+        "interval_low": 0.4890177246575191,
+        "power": 0.52,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "detectable",
+        "detections": 941,
+        "effect_size": 0.03,
+        "interval_high": 0.9539857017871995,
+        "interval_low": 0.9246390972285408,
+        "power": 0.941,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "detectable",
+        "detections": 1000,
+        "effect_size": 0.05,
+        "interval_high": 1.0,
+        "interval_low": 0.996173241514445,
+        "power": 1.0,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "detectable",
+        "detections": 1000,
+        "effect_size": 0.08,
+        "interval_high": 1.0,
+        "interval_low": 0.996173241514445,
+        "power": 1.0,
+        "repetitions": 1000
+      },
+      {
+        "detectability": "detectable",
+        "detections": 1000,
+        "effect_size": 0.1,
+        "interval_high": 1.0,
+        "interval_low": 0.996173241514445,
+        "power": 1.0,
+        "repetitions": 1000
+      }
+    ]
+  },
+  "equivalence_margin": 0.02,
+  "equivalence_method": "two-sided exact Clopper-Pearson intervals for all 49 main and 10 Chance Bernoulli marginals; Bonferroni within each test and across the two tests; bias_absent only when the simultaneous maximum-deviation upper bound is strictly below the margin",
+  "monte_carlo_method": "finite upper-tail p=(1 + count(null >= observed))/(B + 1)",
+  "multiplicity_correction": "Bonferroni across two marginal tests",
+  "n_draws": 2811,
+  "null_repetitions": 4999,
+  "per_test_alpha": 0.025,
+  "power_repetitions": 1000,
+  "power_target": 0.8,
+  "seed": 20260924,
+  "statistic": "maximum absolute marginal inclusion-rate deviation"
+}

@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from scipy import signal, stats
-from src.loto.config import MAX_BALL
+from loto.config import MAX_BALL
 
 
 def _binary_series(df: pd.DataFrame) -> dict[int, np.ndarray]:
@@ -15,7 +15,7 @@ def _binary_series(df: pd.DataFrame) -> dict[int, np.ndarray]:
     n_draws = len(df)
     for num in range(1, MAX_BALL + 1):
         arr = np.zeros(n_draws, dtype=float)
-        for idx, (_, row) in enumerate(df.iloc[:n_draws].itertuples()):
+        for idx, row in enumerate(df.iloc[:n_draws].itertuples(index=False)):
             if num in (row.boule_1, row.boule_2, row.boule_3, row.boule_4, row.boule_5):
                 arr[idx] = 1.0
         series[num] = arr
@@ -55,9 +55,22 @@ def _fft_periods(x: np.ndarray) -> dict[str, Any]:
     return {"dominant_periods": periods[:5], "threshold": thresh, "total_power": float(np.sum(mags[1:]**2))}
 
 
+def _benjamini_hochberg(p_values: list[float]) -> np.ndarray:
+    """Ajuste une famille de p-values par contrôle FDR de Benjamini-Hochberg."""
+    p = np.asarray(p_values, dtype=float)
+    order = np.argsort(p)
+    ranked = p[order]
+    adjusted_ranked = np.minimum.accumulate(
+        (ranked * len(p) / np.arange(1, len(p) + 1))[::-1]
+    )[::-1]
+    adjusted = np.empty_like(adjusted_ranked)
+    adjusted[order] = np.minimum(adjusted_ranked, 1.0)
+    return adjusted
+
+
 def analyze_periodicity(db_path: str | None = None) -> dict[str, Any]:
-    """Lance l'analyse de périodicité complète. Returns per_number + summary."""
-    from src.loto.analysis import get_dataframe
+    """Analyse exploratoire ACF/FFT avec correction globale des tests multiples."""
+    from loto.analysis import get_dataframe
 
     df = get_dataframe(db_path)
     n_draws = len(df)
@@ -66,40 +79,60 @@ def analyze_periodicity(db_path: str | None = None) -> dict[str, Any]:
 
     series = _binary_series(df)
     max_lag = min(n_draws // 2, 50)
-    per_number: dict[int, dict[str, Any]] = {}
-    cyclic_numbers = []
+    raw: dict[int, dict[str, Any]] = {}
+    tests: list[tuple[int, int, float]] = []
 
     for num in range(1, MAX_BALL + 1):
         arr = series[num]
-        rate = float(np.mean(arr))
-        lags, acf_vals = _acf(arr, max_lag)
-        # Significativité ACF: seuil ≈ ±1.96/√n (IC 95%)
-        ci = 1.96 / np.sqrt(n_draws)
-        sig_lags = [lag for lag in range(1, len(acf_vals)) if abs(acf_vals[lag]) > ci]
-
-        fft_info = _fft_periods(arr)
-
-        per_number[num] = {
-            "occurrence_rate": round(rate, 4),
-            "acf_significant_lags": sig_lags[:10],
-            "fft_dominant_periods": fft_info["dominant_periods"][:3],
+        _, acf_vals = _acf(arr, max_lag)
+        for lag in range(1, len(acf_vals)):
+            z_score = abs(acf_vals[lag]) * np.sqrt(n_draws)
+            p_value = float(2 * stats.norm.sf(z_score))
+            tests.append((num, lag, p_value))
+        raw[num] = {
+            "occurrence_rate": float(np.mean(arr)),
+            "acf": acf_vals,
+            "fft": _fft_periods(arr),
         }
-        if fft_info["dominant_periods"] and sig_lags:
-            cyclic_numbers.append({
-                "number": num, "rate": round(rate, 4),
-                "periods": fft_info["dominant_periods"], "sig_lags": sig_lags[:5],
-            })
 
-    cyclic_numbers.sort(key=lambda x: len(x["periods"]) + len(x["sig_lags"]), reverse=True)
+    q_values = _benjamini_hochberg([test[2] for test in tests])
+    corrected_lags: dict[int, list[int]] = {num: [] for num in range(1, MAX_BALL + 1)}
+    for (num, lag, _), q_value in zip(tests, q_values):
+        if q_value < 0.05:
+            corrected_lags[num].append(lag)
+
+    per_number: dict[int, dict[str, Any]] = {}
+    cyclic_numbers = []
+    for num in range(1, MAX_BALL + 1):
+        periods = raw[num]["fft"]["dominant_periods"][:3]
+        sig_lags = corrected_lags[num]
+        matched = [
+            period for period, _ in periods
+            if any(abs(period - lag) <= 1 for lag in sig_lags)
+        ]
+        per_number[num] = {
+            "occurrence_rate": round(raw[num]["occurrence_rate"], 4),
+            "acf_fdr_significant_lags": sig_lags[:10],
+            "fft_candidate_periods": periods,
+            "acf_fft_matches": matched,
+        }
+        if matched:
+            cyclic_numbers.append({
+                "number": num,
+                "matched_periods": matched,
+                "acf_fdr_significant_lags": sig_lags[:10],
+            })
 
     summary = {
         "total_draws": n_draws,
+        "tests_corrected": len(tests),
         "cyclic_numbers_count": len(cyclic_numbers),
-        "cyclic_numbers": cyclic_numbers[:20],
+        "cyclic_numbers": cyclic_numbers,
         "interpretation": (
-            f"{len(cyclic_numbers)} numéro(s) cyclique(s) détecté(s) sur {n_draws} tirages."
+            "Candidats exploratoires après correction FDR; toute réplication doit être "
+            "confirmée sur une période hors échantillon et par permutation."
             if cyclic_numbers
-            else "Aucun cycle significatif — compatible avec du bruit blanc."
+            else "Aucun cycle robuste après correction globale des tests multiples."
         ),
     }
     return {"per_number": per_number, "summary": summary}

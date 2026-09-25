@@ -2,13 +2,14 @@
 Configuration centralisée du projet Loto Analyze.
 """
 
-import os
 from pathlib import Path
 
-# Root directories
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+# Runtime defaults are relative to the invocation directory.  This preserves the
+# repository-root workflow without ever treating an installed package directory
+# as writable storage.
+PROJECT_ROOT = Path.cwd()
 SRC_DIR = Path(__file__).parent
-DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR = PROJECT_ROOT
 OUTPUT_DIR = PROJECT_ROOT / "output"
 
 # CSV source files (relative to project root)
@@ -20,7 +21,7 @@ CSV_FILES = [
 ]
 
 # Database path
-DB_PATH = DATA_DIR / "loto_analyze.db"
+DB_PATH = PROJECT_ROOT / "data" / "loto_analyze.db"
 
 # Loto game rules
 NUM_BALLS = 5          # Number of main numbers drawn
@@ -36,7 +37,3 @@ CORR_STRONG_THRESHOLD = 0.15  # absolute correlation considered "strong"
 # Strategy simulation params
 SIMULATION_ROUNDS = 100_000
 SIMULATION_SEED = 42
-
-# Ensure directories exist
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
